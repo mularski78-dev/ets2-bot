@@ -9,12 +9,14 @@ const DATA_FILE = './data.json';
 
 // 📊 dane
 let zrobioneKm = 0;
+let dzienneKm = 0;
 let lastReset = new Date().toDateString();
 
 // 📥 wczytanie danych
 if (fs.existsSync(DATA_FILE)) {
   const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   zrobioneKm = data.zrobioneKm || 0;
+  dzienneKm = data.dzienneKm || 0;
   lastReset = data.lastReset || new Date().toDateString();
 }
 
@@ -22,23 +24,25 @@ if (fs.existsSync(DATA_FILE)) {
 function saveData() {
   fs.writeFileSync(DATA_FILE, JSON.stringify({
     zrobioneKm,
+    dzienneKm,
     lastReset
   }, null, 2));
 }
 
-// 🔄 reset dzienny
-function checkReset() {
-  const today = new Date().toDateString();
+// 🔄 reset o północy
+setInterval(() => {
+  const now = new Date();
 
-  if (today !== lastReset) {
-    console.log("🔄 Reset dzienny");
+  if (now.getHours() === 0 && now.getMinutes() === 0 && lastReset !== now.toDateString()) {
+    console.log("🌙 Reset o północy");
 
-    zrobioneKm = 0;
-    lastReset = today;
+    dzienneKm = 0;
+    lastReset = now.toDateString();
 
     saveData();
   }
-}
+
+}, 60 * 1000);
 
 // 🤖 bot
 const client = new Client({
@@ -49,64 +53,65 @@ const client = new Client({
   ]
 });
 
-// ✅ start bota
-client.once('ready', async () => {
-  console.log(`Bot działa jako ${client.user.tag}`);
-
-  try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    if (channel) {
-      channel.send("✅ Bot uruchomiony i działa poprawnie!");
-    }
-  } catch (err) {
-    console.log("❌ Nie mam dostępu do kanału");
-  }
-});
-
-// 📊 podsumowanie
-function sendSummary(channel) {
-
-  const pozostalo = CEL_KM - zrobioneKm;
-  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
-
-  const embed = new EmbedBuilder()
-    .setColor(0x00AEFF)
-    .setTitle("🚛 PODSUMOWANIE DZIENNE")
-    .addFields(
-      { name: "📊 Dziś przejechano", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
-      { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
-      { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
-      { name: "📈 Postęp", value: `${procent}%`, inline: true }
-    )
-    .setFooter({ text: "ETS2 VTC System" });
-
-  channel.send({ embeds: [embed] });
-}
-
-// 🔁 podsumowanie co 24h
+// 📊 raport dzienny o północy
 setInterval(async () => {
-  try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
+  const now = new Date();
 
-    if (!channel) return;
+  if (now.getHours() === 0 && now.getMinutes() === 1) {
+    try {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      if (!channel) return;
 
-    sendSummary(channel);
+      const pozostalo = CEL_KM - zrobioneKm;
+      const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
-    zrobioneKm = 0;
-    saveData();
+      const embed = new EmbedBuilder()
+        .setColor(0x00AEFF)
+        .setTitle("🌙 RAPORT DZIENNY")
+        .addFields(
+          { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
+          { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
+          { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
+          { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
+          { name: "📈 Postęp", value: `${procent}%`, inline: true }
+        );
 
-  } catch (err) {
-    console.log("❌ Błąd przy wysyłaniu podsumowania");
+      channel.send({ embeds: [embed] });
+
+      dzienneKm = 0;
+      saveData();
+
+    } catch (err) {
+      console.log("❌ Błąd raportu dziennego");
+    }
   }
 
-}, 24 * 60 * 60 * 1000);
+}, 60 * 1000);
 
-// 📥 odbieranie tras
+// 📥 odbieranie tras + komenda
 client.on('messageCreate', message => {
 
   if (message.channel.id !== CHANNEL_ID) return;
 
-  checkReset();
+  const TWOJE_ID = '1168624048851402812';
+
+  // 🔒 komenda admina
+  if (message.content.startsWith('!addkm')) {
+
+    if (message.author.id !== TWOJE_ID) return;
+
+    const args = message.content.split(' ');
+    const km = parseInt(args[1]);
+
+    if (!km) return message.reply('❌ Użyj: !addkm 1000');
+
+    zrobioneKm += km;
+    dzienneKm += km;
+
+    saveData();
+
+    return message.channel.send(`🚛 Dodano ręcznie: ${km} km`);
+  }
 
   let text = "";
 
@@ -122,7 +127,6 @@ client.on('messageCreate', message => {
     }
   }
 
-  // 🔍 wyciąganie km
   const match = text.match(/([\d\s]+)\s*km/i);
 
   if (!match) return;
@@ -132,25 +136,26 @@ client.on('messageCreate', message => {
   if (!km) return;
 
   zrobioneKm += km;
+  dzienneKm += km;
 
-// 👇 DODAJ TO TUTAJ
-const pozostalo = CEL_KM - zrobioneKm;
-const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+  const pozostalo = CEL_KM - zrobioneKm;
+  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
-message.channel.send(
-  `🚛 **Nowa trasa!**\n` +
-  `✔ +${km} km\n` +
-  `📊 Suma: ${zrobioneKm.toLocaleString()} km\n` +
-  `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
-  `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
-  `📈 ${procent}%`
-);
+  message.channel.send(
+    `🚛 **Nowa trasa!**\n` +
+    `✔ +${km} km\n` +
+    `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
+    `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
+    `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
+    `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
+    `📈 ${procent}%`
+  );
 
-// 👆 KONIEC DODATKU
+  saveData();
+});
 
-console.log(`➕ Dodano ${km} km | Suma: ${zrobioneKm}`);
-
-saveData();
+client.once('ready', () => {
+  console.log(`Bot działa jako ${client.user.tag}`);
 });
 
 client.login(TOKEN);
