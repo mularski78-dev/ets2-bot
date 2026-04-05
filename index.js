@@ -1,6 +1,8 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 
+process.env.TZ = 'Europe/London';
+
 // 🔧 KONFIGURACJA
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
@@ -29,11 +31,20 @@ function saveData() {
   }, null, 2));
 }
 
-// 🌙 RESET + RAPORT O PÓŁNOCY (JEDEN SYSTEM)
+// 🤖 bot
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+// 🌙 RESET + RAPORT (PEWNY SYSTEM)
 setInterval(async () => {
   const now = new Date();
 
-  if (now.getHours() === 0 && now.getMinutes() === 0 && lastReset !== now.toDateString()) {
+  if (now.toDateString() !== lastReset) {
     console.log("🌙 Reset + raport dzienny");
 
     try {
@@ -53,7 +64,7 @@ setInterval(async () => {
             { name: "📈 Postęp", value: `${procent}%`, inline: true }
           );
 
-        channel.send({ embeds: [embed] });
+        await channel.send({ embeds: [embed] });
       }
     } catch (err) {
       console.log("❌ Błąd raportu");
@@ -66,23 +77,14 @@ setInterval(async () => {
 
 }, 60 * 1000);
 
-// 🤖 bot
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-});
-
-// 📥 odbieranie tras + komenda
+// 📥 odbieranie tras + komendy
 client.on('messageCreate', message => {
 
   if (message.channel.id !== CHANNEL_ID) return;
 
   const TWOJE_ID = '1168624048851402812';
 
-  // 🔒 KOMENDA ADMINA
+  // 🔒 ADD KM
   if (message.content.startsWith('!addkm')) {
 
     if (message.author.id !== TWOJE_ID) return;
@@ -109,6 +111,18 @@ client.on('messageCreate', message => {
       `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
       `📈 ${procent}%`
     );
+  }
+
+  // 🔄 RESET DZIENNY (TYLKO TY)
+  if (message.content === '!resetdzien') {
+
+    if (message.author.id !== TWOJE_ID) return;
+
+    dzienneKm = 0;
+
+    saveData();
+
+    return message.channel.send('🌙 Dzienny raport został wyzerowany!');
   }
 
   // 🔍 AUTO LICZENIE
