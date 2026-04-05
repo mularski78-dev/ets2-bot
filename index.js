@@ -6,7 +6,7 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
 const CEL_KM = 5000000;
 
-// 👉 NAJWAŻNIEJSZE: zapis na Render Disk
+// 📁 zapis danych
 const DATA_FILE = '/var/data/data.json';
 
 // 📊 dane
@@ -40,7 +40,7 @@ const client = new Client({
   ]
 });
 
-// 🌙 RESET + RAPORT
+// 🌙 RAPORT DZIENNY
 setInterval(async () => {
   const now = new Date();
 
@@ -69,7 +69,6 @@ setInterval(async () => {
       console.log("❌ Błąd raportu");
     }
 
-    // 🔥 RESET TYLKO DZIENNY
     dzienneKm = 0;
     lastReset = now.toDateString();
     saveData();
@@ -112,17 +111,26 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 auto liczenie km
+  // 🔍 AUTO (TrucksBook)
   let text = "";
+  let driver = "Nieznany kierowca";
 
   if (message.embeds.length > 0) {
     const embed = message.embeds[0];
 
-    if (embed.description) text += embed.description;
+    if (embed.title) text += embed.title;
+    if (embed.description) text += " " + embed.description;
 
     if (embed.fields) {
       embed.fields.forEach(f => {
         text += " " + f.name + " " + f.value;
+
+        // 🔍 SZUKANIE KIEROWCY
+        const name = f.name.toLowerCase();
+
+        if (name.includes("driver") || name.includes("kierowca")) {
+          driver = f.value;
+        }
       });
     }
   }
@@ -138,16 +146,22 @@ client.on('messageCreate', message => {
 
   saveData();
 
+  const pozostalo = CEL_KM - zrobioneKm;
+  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+
   message.channel.send(
     `🚛 **Nowa trasa!**\n` +
+    `👤 Kierowca: **${driver}**\n` +
     `✔ +${km} km\n` +
     `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
     `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
     `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
-    `📈 ${((zrobioneKm / CEL_KM) * 100).toFixed(2)}%`
+    `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
+    `📈 ${procent}%`
   );
 });
 
+// ✅ start
 client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
 });
