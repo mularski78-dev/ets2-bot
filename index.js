@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, Events } = require('discord.js');
 const fs = require('fs');
 
 // 🔧 KONFIGURACJA
@@ -89,14 +89,68 @@ setInterval(async () => {
 
 }, 60 * 1000);
 
-// 📥 wiadomości
+// 📥 WEBHOOK TRUCKSBOOK (NAPRAWIONE)
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    if (message.author.bot) return;
+    if (!message.embeds.length) return;
+
+    const embed = message.embeds[0];
+    const desc = embed.description || "";
+
+    // 👤 kierowca
+    let driverKey = embed.author?.name || "unknown";
+
+    // 📏 km
+    const kmMatch = desc.match(/\+\s?([\d\s]+)\s?km/);
+    if (!kmMatch) return;
+
+    const km = parseInt(kmMatch[1].replace(/\s/g, ""));
+
+    if (!km) return;
+
+    // 💾 zapis
+    zrobioneKm += km;
+    dzienneKm += km;
+
+    // 👤 kierowcy
+    if (!drivers[driverKey]) {
+      drivers[driverKey] = driverKey;
+      saveDrivers();
+    }
+
+    saveData();
+
+    const channel = await client.channels.fetch(CHANNEL_ID);
+
+    const pozostalo = CEL_KM - zrobioneKm;
+    const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+
+    await channel.send(
+      `🚛 **Nowa trasa!**\n` +
+      `👤 Kierowca: **${driverKey}**\n` +
+      `✔ +${km.toLocaleString()} km\n` +
+      `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
+      `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
+      `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
+      `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
+      `📈 ${procent}%`
+    );
+
+    console.log(`OK: ${driverKey} +${km} km`);
+
+  } catch (err) {
+    console.log("❌ Błąd:", err);
+  }
+});
+
+// 🔒 ręczne dodanie km
 client.on('messageCreate', message => {
 
   if (message.channel.id !== CHANNEL_ID) return;
 
   const TWOJE_ID = '1168624048851402812';
 
-  // 🔒 ręczne dodanie km
   if (message.content.startsWith('!addkm')) {
 
     if (message.author.id !== TWOJE_ID) return;
@@ -123,59 +177,10 @@ client.on('messageCreate', message => {
       `📈 ${procent}%`
     );
   }
-
-  // 🔍 AUTO TRUCKSBOOK
-  let text = message.content;
-  let driverKey = null;
-
-  // 🔥 SZUKANIE .NICK.
-  const nickMatch = text.match(/\.(.*?)\./);
-
-  if (nickMatch) {
-    driverKey = nickMatch[1].trim();
-  }
-
-  // fallback
-  if (!driverKey) {
-    driverKey = message.member?.displayName || message.author.username;
-  }
-
-  // zapis kierowcy
-  if (driverKey && !drivers[driverKey]) {
-    drivers[driverKey] = driverKey;
-    saveDrivers();
-    console.log("➕ Nowy kierowca:", driverKey);
-  }
-
-  // km
-  const match = text.match(/([\d\s]+)\s*km/i);
-  if (!match) return;
-
-  const km = parseInt(match[1].replace(/\s/g, ''));
-  if (!km) return;
-
-  zrobioneKm += km;
-  dzienneKm += km;
-
-  saveData();
-
-  const pozostalo = CEL_KM - zrobioneKm;
-  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
-
-  message.channel.send(
-    `🚛 **Nowa trasa!**\n` +
-    `👤 Kierowca: **${drivers[driverKey] || driverKey}**\n` +
-    `✔ +${km.toLocaleString()} km\n` +
-    `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
-    `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
-    `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
-    `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
-    `📈 ${procent}%`
-  );
 });
 
 // ✅ start
-client.once('ready', () => {
+client.once(Events.ClientReady, () => {
   console.log(`Bot działa jako ${client.user.tag}`);
 });
 
