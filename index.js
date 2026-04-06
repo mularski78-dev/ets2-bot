@@ -111,15 +111,26 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 AUTO (TrucksBook + Discord nick)
+  // 🔍 AUTO (TrucksBook)
   let text = "";
-  let driver = null;
+  let driver = "Nieznany kierowca";
 
   if (message.embeds.length > 0) {
     const embed = message.embeds[0];
 
-    if (embed.title) text += embed.title;
-    if (embed.description) text += " " + embed.description;
+    // 🔥 KLUCZOWE — wyciąga .ZIBI.
+    if (embed.title) {
+      text += embed.title;
+
+      const match = embed.title.match(/\.(.*?)\./);
+      if (match) {
+        driver = match[1].trim();
+      }
+    }
+
+    if (embed.description) {
+      text += " " + embed.description;
+    }
 
     if (embed.fields) {
       embed.fields.forEach(f => {
@@ -127,16 +138,15 @@ client.on('messageCreate', message => {
 
         const name = f.name.toLowerCase();
 
-        if (name.includes("driver") || name.includes("kierowca")) {
+        // fallback gdyby zmienił się format
+        if (
+          driver === "Nieznany kierowca" &&
+          (name.includes("driver") || name.includes("kierowca"))
+        ) {
           driver = f.value;
         }
       });
     }
-  }
-
-  // 🔥 fallback na nick z Discorda
-  if (!driver) {
-    driver = message.member?.displayName || message.author.username;
   }
 
   const match = text.match(/([\d\s]+)\s*km/i);
