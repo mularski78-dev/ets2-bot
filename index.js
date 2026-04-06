@@ -6,13 +6,17 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
 const CEL_KM = 5000000;
 
-// 📁 zapis danych
+// 📁 pliki
 const DATA_FILE = '/var/data/data.json';
+const DRIVERS_FILE = '/var/data/drivers.json';
 
 // 📊 dane
 let zrobioneKm = 0;
 let dzienneKm = 0;
 let lastReset = new Date().toDateString();
+
+// 👤 kierowcy
+let drivers = {};
 
 // 📥 wczytanie danych
 if (fs.existsSync(DATA_FILE)) {
@@ -22,6 +26,10 @@ if (fs.existsSync(DATA_FILE)) {
   lastReset = data.lastReset || new Date().toDateString();
 }
 
+if (fs.existsSync(DRIVERS_FILE)) {
+  drivers = JSON.parse(fs.readFileSync(DRIVERS_FILE, 'utf8'));
+}
+
 // 💾 zapis danych
 function saveData() {
   fs.writeFileSync(DATA_FILE, JSON.stringify({
@@ -29,6 +37,11 @@ function saveData() {
     dzienneKm,
     lastReset
   }, null, 2));
+}
+
+// 💾 zapis kierowców
+function saveDrivers() {
+  fs.writeFileSync(DRIVERS_FILE, JSON.stringify(drivers, null, 2));
 }
 
 // 🤖 bot
@@ -111,9 +124,9 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 AUTO (TrucksBook + Discord nick)
+  // 🔍 AUTO (TrucksBook + Discord)
   let text = "";
-  let driver = null;
+  let driverKey = null;
 
   if (message.embeds.length > 0) {
     const embed = message.embeds[0];
@@ -128,15 +141,22 @@ client.on('messageCreate', message => {
         const name = f.name.toLowerCase();
 
         if (name.includes("driver") || name.includes("kierowca")) {
-          driver = f.value;
+          driverKey = f.value;
         }
       });
     }
   }
 
-  // 🔥 fallback na nick z Discorda
-  if (!driver) {
-    driver = message.member?.displayName || message.author.username;
+  // fallback
+  if (!driverKey) {
+    driverKey = message.member?.displayName || message.author.username;
+  }
+
+  // zapis kierowcy
+  if (driverKey && !drivers[driverKey]) {
+    drivers[driverKey] = driverKey;
+    saveDrivers();
+    console.log("➕ Nowy kierowca:", driverKey);
   }
 
   const match = text.match(/([\d\s]+)\s*km/i);
@@ -155,8 +175,8 @@ client.on('messageCreate', message => {
 
   message.channel.send(
     `🚛 **Nowa trasa!**\n` +
-    `👤 Kierowca: **${driver}**\n` +
-    `✔ +${km} km\n` +
+    `👤 Kierowca: **${drivers[driverKey] || driverKey}**\n` +
+    `✔ +${km.toLocaleString()} km\n` +
     `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
     `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
     `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
