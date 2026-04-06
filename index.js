@@ -111,45 +111,67 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 AUTO (TrucksBook)
+  // 🔍 AUTO (TrucksBook) — FINALNA WERSJA
   let text = "";
   let driver = "Nieznany kierowca";
 
   if (message.embeds.length > 0) {
     const embed = message.embeds[0];
 
-    // 🔥 KLUCZOWE — wyciąga .ZIBI.
+    // 🔥 DEBUG (usun jak będzie działać)
+    console.log("===== EMBED =====");
+    console.log(JSON.stringify(embed, null, 2));
+    console.log("===== END =====");
+
+    // 🔍 TITLE
     if (embed.title) {
       text += embed.title;
 
-      const match = embed.title.match(/\.(.*?)\./);
+      let match =
+        embed.title.match(/\.(.*?)\./) ||
+        embed.title.match(/- (.+)$/) ||
+        embed.title.match(/by (.+)$/i);
+
       if (match) {
         driver = match[1].trim();
       }
     }
 
+    // 🔍 DESCRIPTION
     if (embed.description) {
       text += " " + embed.description;
+
+      if (driver === "Nieznany kierowca") {
+        let match = embed.description.match(/by (.+)$/i);
+        if (match) {
+          driver = match[1].trim();
+        }
+      }
     }
 
+    // 🔍 FIELDS
     if (embed.fields) {
       embed.fields.forEach(f => {
         text += " " + f.name + " " + f.value;
 
         const name = f.name.toLowerCase();
 
-        // fallback gdyby zmienił się format
         if (
-          driver === "Nieznany kierowca" &&
-          (name.includes("driver") || name.includes("kierowca"))
+          name.includes("driver") ||
+          name.includes("kierowca")
         ) {
-          driver = f.value;
+          driver = f.value.trim();
         }
       });
     }
   }
 
-  const match = text.match(/([\d\s]+)\s*km/i);
+  // ❌ jeśli nadal brak kierowcy — log
+  if (driver === "Nieznany kierowca") {
+    console.log("❌ NIE WYKRYTO KIEROWCY");
+  }
+
+  const match = text.match(/(\d{1,3}(?:[\s,]\d{3})*|\d+)\s*km/i);
   if (!match) return;
 
   const km = parseInt(match[1].replace(/\s/g, ''));
