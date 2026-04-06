@@ -22,6 +22,15 @@ if (fs.existsSync(DATA_FILE)) {
   lastReset = data.lastReset || new Date().toDateString();
 }
 
+// 🔥 RESET PRZY STARCIE (SYNC)
+const today = new Date().toDateString();
+if (lastReset !== today) {
+  dzienneKm = 0;
+  lastReset = today;
+  saveData();
+  console.log("🔄 RESET PO STARCIE (SYNC)");
+}
+
 // 💾 zapis danych
 function saveData() {
   fs.writeFileSync(DATA_FILE, JSON.stringify({
@@ -40,11 +49,12 @@ const client = new Client({
   ]
 });
 
-// 🌙 RAPORT DZIENNY
+// 🌙 RAPORT DZIENNY (SYNC)
 setInterval(async () => {
   const now = new Date();
+  const today = now.toDateString();
 
-  if (now.getHours() === 0 && now.getMinutes() === 0 && lastReset !== now.toDateString()) {
+  if (lastReset !== today) {
 
     try {
       const channel = await client.channels.fetch(CHANNEL_ID);
@@ -70,8 +80,10 @@ setInterval(async () => {
     }
 
     dzienneKm = 0;
-    lastReset = now.toDateString();
+    lastReset = today;
     saveData();
+
+    console.log("✅ RESET DNIA (SYNC)");
   }
 
 }, 60 * 1000);
@@ -111,12 +123,19 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 AUTO (TrucksBook) — POPRAWIONY KIEROWCA
+  // 🔍 AUTO (TrucksBook)
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
 
-  // ✅ NAJWAŻNIEJSZE — kierowca z author.name
+  // 🔥 BLOKADA STARYCH TRAS (PRO)
+  const messageDate = new Date(message.createdTimestamp).toDateString();
+  if (messageDate !== new Date().toDateString()) {
+    console.log("⚠️ Pominięto starą trasę");
+    return;
+  }
+
+  // ✅ kierowca z TrucksBook
   let driver = "Nieznany kierowca";
   if (embed.author && embed.author.name) {
     driver = embed.author.name;
@@ -133,7 +152,7 @@ client.on('messageCreate', message => {
     });
   }
 
-  const match = text.match(/([\d\s]+)\s*km/i);
+  const match = text.match(/(\d{1,3}(?:[\s,]\d{3})*|\d+)\s*km/i);
   if (!match) return;
 
   const km = parseInt(match[1].replace(/\s/g, ''));
