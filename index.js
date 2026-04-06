@@ -111,9 +111,9 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 AUTO (TrucksBook)
+  // 🔍 AUTO (TrucksBook + Discord nick)
   let text = "";
-  let driver = "Nieznany kierowca";
+  let driver = null;
 
   if (message.embeds.length > 0) {
     const embed = message.embeds[0];
@@ -125,7 +125,6 @@ client.on('messageCreate', message => {
       embed.fields.forEach(f => {
         text += " " + f.name + " " + f.value;
 
-        // 🔍 SZUKANIE KIEROWCY
         const name = f.name.toLowerCase();
 
         if (name.includes("driver") || name.includes("kierowca")) {
@@ -133,6 +132,11 @@ client.on('messageCreate', message => {
         }
       });
     }
+  }
+
+  // 🔥 fallback na nick z Discorda
+  if (!driver) {
+    driver = message.member?.displayName || message.author.username;
   }
 
   const match = text.match(/([\d\s]+)\s*km/i);
