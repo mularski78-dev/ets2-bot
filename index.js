@@ -6,6 +6,12 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
 const CEL_KM = 5000000;
 
+// ❗ zabezpieczenie
+if (!TOKEN) {
+  console.log("❌ BRAK TOKENA!");
+  process.exit(1);
+}
+
 // 📁 zapis danych
 const DATA_FILE = '/var/data/data.json';
 
@@ -79,11 +85,14 @@ setInterval(async () => {
 // 📥 wiadomości
 client.on('messageCreate', message => {
 
+  // 🔒 tylko kanał
   if (message.channel.id !== CHANNEL_ID) return;
+
+  if (message.author.bot) return;
 
   const TWOJE_ID = '1168624048851402812';
 
-  // 🔒 ręczne dodanie km
+  // 🔧 ręczne dodanie km
   if (message.content.startsWith('!addkm')) {
 
     if (message.author.id !== TWOJE_ID) return;
@@ -111,13 +120,14 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 AUTO (TrucksBook + Discord nick)
+  // 🔥 ODZYSKIWANIE DANYCH Z EMBED
   let text = "";
   let driver = null;
 
   if (message.embeds.length > 0) {
     const embed = message.embeds[0];
 
+    // tekst do parsowania km
     if (embed.title) text += embed.title;
     if (embed.description) text += " " + embed.description;
 
@@ -132,19 +142,26 @@ client.on('messageCreate', message => {
         }
       });
     }
+
+    // 🔥 NAJWAŻNIEJSZE – TrucksBook często daje kierowcę tutaj
+    if (!driver && embed.author?.name) {
+      driver = embed.author.name;
+    }
   }
 
-  // 🔥 fallback na nick z Discorda
+  // fallback
   if (!driver) {
-    driver = message.member?.displayName || message.author.username;
+    driver = "Nieznany kierowca";
   }
 
-  const match = text.match(/([\d\s]+)\s*km/i);
+  // 🔍 wykrywanie km (lepsze)
+  const match = text.match(/([\d\s,]+)\s*km/i);
   if (!match) return;
 
-  const km = parseInt(match[1].replace(/\s/g, ''));
+  const km = parseInt(match[1].replace(/[^\d]/g, ''));
   if (!km) return;
 
+  // 📊 aktualizacja
   zrobioneKm += km;
   dzienneKm += km;
 
@@ -156,7 +173,7 @@ client.on('messageCreate', message => {
   message.channel.send(
     `🚛 **Nowa trasa!**\n` +
     `👤 Kierowca: **${driver}**\n` +
-    `✔ +${km} km\n` +
+    `✔ +${km.toLocaleString()} km\n` +
     `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
     `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
     `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
