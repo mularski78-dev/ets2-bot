@@ -124,27 +124,15 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 AUTO (TrucksBook + Discord)
-  let text = "";
+  // 🔍 AUTO TRUCKSBOOK
+  let text = message.content;
   let driverKey = null;
 
-  if (message.embeds.length > 0) {
-    const embed = message.embeds[0];
+  // 🔥 SZUKANIE .NICK.
+  const nickMatch = text.match(/\.(.*?)\./);
 
-    if (embed.title) text += embed.title;
-    if (embed.description) text += " " + embed.description;
-
-    if (embed.fields) {
-      embed.fields.forEach(f => {
-        text += " " + f.name + " " + f.value;
-
-        const name = f.name.toLowerCase();
-
-        if (name.includes("driver") || name.includes("kierowca")) {
-          driverKey = f.value;
-        }
-      });
-    }
+  if (nickMatch) {
+    driverKey = nickMatch[1].trim();
   }
 
   // fallback
@@ -159,6 +147,7 @@ client.on('messageCreate', message => {
     console.log("➕ Nowy kierowca:", driverKey);
   }
 
+  // km
   const match = text.match(/([\d\s]+)\s*km/i);
   if (!match) return;
 
