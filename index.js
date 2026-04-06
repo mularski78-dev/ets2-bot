@@ -76,10 +76,10 @@ setInterval(async () => {
           { name: "📈 Postęp", value: `${procent}%`, inline: true }
         );
 
-      channel.send({ embeds: [embed] });
+      await channel.send({ embeds: [embed] });
 
     } catch (err) {
-      console.log("❌ Błąd raportu");
+      console.error("❌ Błąd raportu:", err);
     }
 
     dzienneKm = 0;
@@ -89,31 +89,29 @@ setInterval(async () => {
 
 }, 60 * 1000);
 
-// 📥 WEBHOOK TRUCKSBOOK (NAPRAWIONE)
+// 📥 TRUCKSBOOK WEBHOOK
 client.on(Events.MessageCreate, async (message) => {
   try {
-    if (message.author.bot) return;
-    if (!message.embeds.length) return;
+    if (message.author.bot) return;           // ignoruj boty
+    if (!message.embeds.length) return;        // musi być embed
 
     const embed = message.embeds[0];
     const desc = embed.description || "";
 
-    // 👤 kierowca
-    let driverKey = embed.author?.name || "unknown";
+    // 🧍 kierowca z embed.author.name
+    let driverKey = embed.author?.name || message.member?.displayName || message.author.username;
 
-    // 📏 km
-    const kmMatch = desc.match(/\+\s?([\d\s]+)\s?km/);
+    // 🔎 szukanie km w tekście
+    const kmMatch = desc.match(/\+\s?([\d\s]+)\s?km/i);
     if (!kmMatch) return;
 
     const km = parseInt(kmMatch[1].replace(/\s/g, ""));
-
     if (!km) return;
 
-    // 💾 zapis
+    // 📈 zapis
     zrobioneKm += km;
     dzienneKm += km;
 
-    // 👤 kierowcy
     if (!drivers[driverKey]) {
       drivers[driverKey] = driverKey;
       saveDrivers();
@@ -122,7 +120,6 @@ client.on(Events.MessageCreate, async (message) => {
     saveData();
 
     const channel = await client.channels.fetch(CHANNEL_ID);
-
     const pozostalo = CEL_KM - zrobioneKm;
     const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
@@ -137,15 +134,15 @@ client.on(Events.MessageCreate, async (message) => {
       `📈 ${procent}%`
     );
 
-    console.log(`OK: ${driverKey} +${km} km`);
+    console.log(`✅ OK: ${driverKey} +${km} km`);
 
   } catch (err) {
-    console.log("❌ Błąd:", err);
+    console.error("❌ Błąd webhooka:", err);
   }
 });
 
-// 🔒 ręczne dodanie km
-client.on('messageCreate', message => {
+// 🛠 ręczne dodanie km
+client.on(Events.MessageCreate, message => {
 
   if (message.channel.id !== CHANNEL_ID) return;
 
@@ -156,7 +153,6 @@ client.on('messageCreate', message => {
     if (message.author.id !== TWOJE_ID) return;
 
     const km = parseInt(message.content.split(' ')[1]);
-
     if (!km) return message.reply('❌ Użyj: !addkm 1000');
 
     zrobioneKm += km;
