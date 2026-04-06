@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, Events } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 
 // 🔧 KONFIGURACJA
@@ -6,17 +6,13 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
 const CEL_KM = 5000000;
 
-// 📁 pliki
+// 📁 zapis danych
 const DATA_FILE = '/var/data/data.json';
-const DRIVERS_FILE = '/var/data/drivers.json';
 
 // 📊 dane
 let zrobioneKm = 0;
 let dzienneKm = 0;
 let lastReset = new Date().toDateString();
-
-// 👤 kierowcy
-let drivers = {};
 
 // 📥 wczytanie danych
 if (fs.existsSync(DATA_FILE)) {
@@ -26,10 +22,6 @@ if (fs.existsSync(DATA_FILE)) {
   lastReset = data.lastReset || new Date().toDateString();
 }
 
-if (fs.existsSync(DRIVERS_FILE)) {
-  drivers = JSON.parse(fs.readFileSync(DRIVERS_FILE, 'utf8'));
-}
-
 // 💾 zapis danych
 function saveData() {
   fs.writeFileSync(DATA_FILE, JSON.stringify({
@@ -37,11 +29,6 @@ function saveData() {
     dzienneKm,
     lastReset
   }, null, 2));
-}
-
-// 💾 zapis kierowców
-function saveDrivers() {
-  fs.writeFileSync(DRIVERS_FILE, JSON.stringify(drivers, null, 2));
 }
 
 // 🤖 bot
@@ -76,10 +63,10 @@ setInterval(async () => {
           { name: "📈 Postęp", value: `${procent}%`, inline: true }
         );
 
-      await channel.send({ embeds: [embed] });
+      channel.send({ embeds: [embed] });
 
     } catch (err) {
-      console.error("❌ Błąd raportu:", err);
+      console.log("❌ Błąd raportu");
     }
 
     dzienneKm = 0;
@@ -89,70 +76,20 @@ setInterval(async () => {
 
 }, 60 * 1000);
 
-// 📥 TRUCKSBOOK WEBHOOK
-client.on(Events.MessageCreate, async (message) => {
-  try {
-    if (message.author.bot) return;           // ignoruj boty
-    if (!message.embeds.length) return;        // musi być embed
-
-    const embed = message.embeds[0];
-    const desc = embed.description || "";
-
-    // 🧍 kierowca z embed.author.name
-    let driverKey = embed.author?.name || message.member?.displayName || message.author.username;
-
-    // 🔎 szukanie km w tekście
-    const kmMatch = desc.match(/\+\s?([\d\s]+)\s?km/i);
-    if (!kmMatch) return;
-
-    const km = parseInt(kmMatch[1].replace(/\s/g, ""));
-    if (!km) return;
-
-    // 📈 zapis
-    zrobioneKm += km;
-    dzienneKm += km;
-
-    if (!drivers[driverKey]) {
-      drivers[driverKey] = driverKey;
-      saveDrivers();
-    }
-
-    saveData();
-
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    const pozostalo = CEL_KM - zrobioneKm;
-    const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
-
-    await channel.send(
-      `🚛 **Nowa trasa!**\n` +
-      `👤 Kierowca: **${driverKey}**\n` +
-      `✔ +${km.toLocaleString()} km\n` +
-      `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
-      `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
-      `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
-      `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
-      `📈 ${procent}%`
-    );
-
-    console.log(`✅ OK: ${driverKey} +${km} km`);
-
-  } catch (err) {
-    console.error("❌ Błąd webhooka:", err);
-  }
-});
-
-// 🛠 ręczne dodanie km
-client.on(Events.MessageCreate, message => {
+// 📥 wiadomości
+client.on('messageCreate', message => {
 
   if (message.channel.id !== CHANNEL_ID) return;
 
   const TWOJE_ID = '1168624048851402812';
 
+  // 🔒 ręczne dodanie km
   if (message.content.startsWith('!addkm')) {
 
     if (message.author.id !== TWOJE_ID) return;
 
     const km = parseInt(message.content.split(' ')[1]);
+
     if (!km) return message.reply('❌ Użyj: !addkm 1000');
 
     zrobioneKm += km;
@@ -173,10 +110,63 @@ client.on(Events.MessageCreate, message => {
       `📈 ${procent}%`
     );
   }
+
+  // 🔍 AUTO (TrucksBook + Discord nick)
+  let text = "";
+  let driver = null;
+
+  if (message.embeds.length > 0) {
+    const embed = message.embeds[0];
+
+    if (embed.title) text += embed.title;
+    if (embed.description) text += " " + embed.description;
+
+    if (embed.fields) {
+      embed.fields.forEach(f => {
+        text += " " + f.name + " " + f.value;
+
+        const name = f.name.toLowerCase();
+
+        if (name.includes("driver") || name.includes("kierowca")) {
+          driver = f.value;
+        }
+      });
+    }
+  }
+
+  // 🔥 fallback na nick z Discorda
+  if (!driver) {
+    driver = message.member?.displayName || message.author.username;
+  }
+
+  const match = text.match(/([\d\s]+)\s*km/i);
+  if (!match) return;
+
+  const km = parseInt(match[1].replace(/\s/g, ''));
+  if (!km) return;
+
+  zrobioneKm += km;
+  dzienneKm += km;
+
+  saveData();
+
+  const pozostalo = CEL_KM - zrobioneKm;
+  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+
+  message.channel.send(
+    `🚛 **Nowa trasa!**\n` +
+    `👤 Kierowca: **${driver}**\n` +
+    `✔ +${km} km\n` +
+    `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
+    `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
+    `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
+    `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
+    `📈 ${procent}%`
+  );
 });
 
 // ✅ start
-client.once(Events.ClientReady, () => {
+client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
 });
 
