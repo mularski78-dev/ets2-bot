@@ -111,67 +111,29 @@ client.on('messageCreate', message => {
     );
   }
 
-  // 🔍 AUTO (TrucksBook) — FINALNA WERSJA
-  let text = "";
+  // 🔍 AUTO (TrucksBook) — POPRAWIONY KIEROWCA
+  if (message.embeds.length === 0) return;
+
+  const embed = message.embeds[0];
+
+  // ✅ NAJWAŻNIEJSZE — kierowca z author.name
   let driver = "Nieznany kierowca";
-
-  if (message.embeds.length > 0) {
-    const embed = message.embeds[0];
-
-    // 🔥 DEBUG (usun jak będzie działać)
-    console.log("===== EMBED =====");
-    console.log(JSON.stringify(embed, null, 2));
-    console.log("===== END =====");
-
-    // 🔍 TITLE
-    if (embed.title) {
-      text += embed.title;
-
-      let match =
-        embed.title.match(/\.(.*?)\./) ||
-        embed.title.match(/- (.+)$/) ||
-        embed.title.match(/by (.+)$/i);
-
-      if (match) {
-        driver = match[1].trim();
-      }
-    }
-
-    // 🔍 DESCRIPTION
-    if (embed.description) {
-      text += " " + embed.description;
-
-      if (driver === "Nieznany kierowca") {
-        let match = embed.description.match(/by (.+)$/i);
-        if (match) {
-          driver = match[1].trim();
-        }
-      }
-    }
-
-    // 🔍 FIELDS
-    if (embed.fields) {
-      embed.fields.forEach(f => {
-        text += " " + f.name + " " + f.value;
-
-        const name = f.name.toLowerCase();
-
-        if (
-          name.includes("driver") ||
-          name.includes("kierowca")
-        ) {
-          driver = f.value.trim();
-        }
-      });
-    }
+  if (embed.author && embed.author.name) {
+    driver = embed.author.name;
   }
 
-  // ❌ jeśli nadal brak kierowcy — log
-  if (driver === "Nieznany kierowca") {
-    console.log("❌ NIE WYKRYTO KIEROWCY");
+  let text = "";
+
+  if (embed.title) text += embed.title + " ";
+  if (embed.description) text += embed.description + " ";
+
+  if (embed.fields) {
+    embed.fields.forEach(f => {
+      text += f.name + " " + f.value + " ";
+    });
   }
 
-  const match = text.match(/(\d{1,3}(?:[\s,]\d{3})*|\d+)\s*km/i);
+  const match = text.match(/([\d\s]+)\s*km/i);
   if (!match) return;
 
   const km = parseInt(match[1].replace(/\s/g, ''));
