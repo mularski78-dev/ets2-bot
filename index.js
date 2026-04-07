@@ -15,6 +15,13 @@ let dzienneKm = 0;
 let drivers = {};
 let lastReset = new Date().toDateString();
 
+// 🕒 CZAS FRANKFURT (NIEMCY)
+function getDETime() {
+  return new Date(new Date().toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin"
+  }));
+}
+
 // 📥 wczytanie danych
 if (fs.existsSync(DATA_FILE)) {
   const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
@@ -82,7 +89,7 @@ function generateReportEmbed() {
 
 // 🌙 RESET + RAPORT
 setInterval(async () => {
-  const now = new Date();
+  const now = getDETime();
 
   if (now.getHours() === 0 && now.getMinutes() === 0) {
     try {
