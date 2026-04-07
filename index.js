@@ -12,7 +12,7 @@ const DATA_FILE = '/var/data/data.json';
 // 📊 dane
 let zrobioneKm = 0;
 let dzienneKm = 0;
-let drivers = {}; // 🔥 DODANE
+let drivers = {};
 let lastReset = new Date().toDateString();
 
 // 📥 wczytanie danych
@@ -20,18 +20,8 @@ if (fs.existsSync(DATA_FILE)) {
   const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   zrobioneKm = data.zrobioneKm || 0;
   dzienneKm = data.dzienneKm || 0;
-  drivers = data.drivers || {}; // 🔥 DODANE
+  drivers = data.drivers || {};
   lastReset = data.lastReset || new Date().toDateString();
-}
-
-// 🔥 RESET PRZY STARCIE
-const today = new Date().toDateString();
-if (lastReset !== today) {
-  dzienneKm = 0;
-  drivers = {};
-  lastReset = today;
-  saveData();
-  console.log("🔄 RESET PO STARCIE");
 }
 
 // 💾 zapis danych
@@ -39,7 +29,7 @@ function saveData() {
   fs.writeFileSync(DATA_FILE, JSON.stringify({
     zrobioneKm,
     dzienneKm,
-    drivers, // 🔥 DODANE
+    drivers,
     lastReset
   }, null, 2));
 }
@@ -53,27 +43,32 @@ const client = new Client({
   ]
 });
 
-// 🌙 RAPORT DZIENNY + TOP 3
+// 🌙 RAPORT DZIENNY + RESET 00:00
 setInterval(async () => {
   const now = new Date();
-  const today = now.toDateString();
 
-  if (lastReset !== today) {
+  if (now.getHours() === 0 && now.getMinutes() === 0) {
 
     try {
       const channel = await client.channels.fetch(CHANNEL_ID);
 
-      // 🔥 TOP 3
       const sorted = Object.entries(drivers)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
+        .sort((a, b) => b[1] - a[1]);
 
+      // 🏆 TOP 3
       let topText = "Brak danych";
-
       if (sorted.length > 0) {
         const medals = ["🥇", "🥈", "🥉"];
-        topText = sorted.map((d, i) =>
+        topText = sorted.slice(0, 3).map((d, i) =>
           `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+        ).join("\n");
+      }
+
+      // 📋 WSZYSCY KIEROWCY
+      let allDrivers = "Brak danych";
+      if (sorted.length > 0) {
+        allDrivers = sorted.map(d =>
+          `👤 ${d[0]} — ${d[1].toLocaleString()} km`
         ).join("\n");
       }
 
@@ -89,21 +84,23 @@ setInterval(async () => {
           { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
           { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
           { name: "📈 Postęp", value: `${procent}%`, inline: true },
-          { name: "🏆 TOP 3 KIEROWCÓW (DZIEŃ)", value: topText }
+          { name: "🏆 TOP 3 KIEROWCÓW", value: topText },
+          { name: "📋 WSZYSCY KIEROWCY (DZIEŃ)", value: allDrivers }
         );
 
-      channel.send({ embeds: [embed] });
+      await channel.send({ embeds: [embed] });
 
     } catch (err) {
-      console.log("❌ Błąd raportu");
+      console.log("❌ Błąd raportu", err);
     }
 
+    // 🔄 RESET PO RAPORCIE
     dzienneKm = 0;
     drivers = {};
-    lastReset = today;
+    lastReset = now.toDateString();
     saveData();
 
-    console.log("✅ RESET DNIA + TOP 3");
+    console.log("✅ RESET DNIA + RAPORT");
   }
 
 }, 60 * 1000);
@@ -140,10 +137,13 @@ client.on('messageCreate', message => {
   const messageDate = new Date(message.createdTimestamp).toDateString();
   if (messageDate !== new Date().toDateString()) return;
 
-  // 👤 kierowca
+  // 👤 kierowca (lepsze wykrywanie)
   let driver = "Nieznany kierowca";
+
   if (embed.author && embed.author.name) {
     driver = embed.author.name;
+  } else if (embed.footer && embed.footer.text) {
+    driver = embed.footer.text;
   }
 
   let text = "";
