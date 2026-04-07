@@ -43,58 +43,55 @@ const client = new Client({
   ]
 });
 
-// 🌙 RAPORT DZIENNY + RESET 00:00
+// 🔥 FUNKCJA RAPORTU (używana wszędzie)
+function generateReportEmbed() {
+  const sorted = Object.entries(drivers)
+    .sort((a, b) => b[1] - a[1]);
+
+  let topText = "Brak danych";
+  if (sorted.length > 0) {
+    const medals = ["🥇", "🥈", "🥉"];
+    topText = sorted.slice(0, 3).map((d, i) =>
+      `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+    ).join("\n");
+  }
+
+  let allDrivers = "Brak danych";
+  if (sorted.length > 0) {
+    allDrivers = sorted.map(d =>
+      `👤 ${d[0]} — ${d[1].toLocaleString()} km`
+    ).join("\n");
+  }
+
+  const pozostalo = CEL_KM - zrobioneKm;
+  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+
+  return new EmbedBuilder()
+    .setColor(0x00AEFF)
+    .setTitle("🌙 RAPORT DZIENNY")
+    .addFields(
+      { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
+      { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
+      { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
+      { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
+      { name: "📈 Postęp", value: `${procent}%`, inline: true },
+      { name: "🏆 TOP 3 KIEROWCÓW", value: topText },
+      { name: "📋 WSZYSCY KIEROWCY (DZIEŃ)", value: allDrivers }
+    );
+}
+
+// 🌙 AUTO RAPORT + RESET 00:00
 setInterval(async () => {
   const now = new Date();
 
   if (now.getHours() === 0 && now.getMinutes() === 0) {
-
     try {
       const channel = await client.channels.fetch(CHANNEL_ID);
-
-      const sorted = Object.entries(drivers)
-        .sort((a, b) => b[1] - a[1]);
-
-      // 🏆 TOP 3
-      let topText = "Brak danych";
-      if (sorted.length > 0) {
-        const medals = ["🥇", "🥈", "🥉"];
-        topText = sorted.slice(0, 3).map((d, i) =>
-          `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
-        ).join("\n");
-      }
-
-      // 📋 WSZYSCY KIEROWCY
-      let allDrivers = "Brak danych";
-      if (sorted.length > 0) {
-        allDrivers = sorted.map(d =>
-          `👤 ${d[0]} — ${d[1].toLocaleString()} km`
-        ).join("\n");
-      }
-
-      const pozostalo = CEL_KM - zrobioneKm;
-      const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
-
-      const embed = new EmbedBuilder()
-        .setColor(0x00AEFF)
-        .setTitle("🌙 RAPORT DZIENNY")
-        .addFields(
-          { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
-          { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
-          { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
-          { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
-          { name: "📈 Postęp", value: `${procent}%`, inline: true },
-          { name: "🏆 TOP 3 KIEROWCÓW", value: topText },
-          { name: "📋 WSZYSCY KIEROWCY (DZIEŃ)", value: allDrivers }
-        );
-
-      await channel.send({ embeds: [embed] });
-
+      await channel.send({ embeds: [generateReportEmbed()] });
     } catch (err) {
       console.log("❌ Błąd raportu", err);
     }
 
-    // 🔄 RESET PO RAPORCIE
     dzienneKm = 0;
     drivers = {};
     lastReset = now.toDateString();
@@ -129,6 +126,11 @@ client.on('messageCreate', message => {
     return message.channel.send(`✔ Dodano ${km} km`);
   }
 
+  // 🔥 KOMENDA RAPORT (TEST)
+  if (message.content === '!raport') {
+    return message.channel.send({ embeds: [generateReportEmbed()] });
+  }
+
   // 🔍 AUTO (TrucksBook)
   if (message.embeds.length === 0) return;
 
@@ -137,7 +139,7 @@ client.on('messageCreate', message => {
   const messageDate = new Date(message.createdTimestamp).toDateString();
   if (messageDate !== new Date().toDateString()) return;
 
-  // 👤 kierowca (lepsze wykrywanie)
+  // 👤 kierowca
   let driver = "Nieznany kierowca";
 
   if (embed.author && embed.author.name) {
