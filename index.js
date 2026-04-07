@@ -43,7 +43,7 @@ const client = new Client({
   ]
 });
 
-// 🔥 FUNKCJA RAPORTU (używana wszędzie)
+// 🔥 RAPORT
 function generateReportEmbed() {
   const sorted = Object.entries(drivers)
     .sort((a, b) => b[1] - a[1]);
@@ -75,12 +75,12 @@ function generateReportEmbed() {
       { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
       { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
       { name: "📈 Postęp", value: `${procent}%`, inline: true },
-      { name: "🏆 TOP 3 KIEROWCÓW", value: topText },
-      { name: "📋 WSZYSCY KIEROWCY (DZIEŃ)", value: allDrivers }
+      { name: "🏆 TOP 3", value: topText },
+      { name: "📋 WSZYSCY", value: allDrivers }
     );
 }
 
-// 🌙 AUTO RAPORT + RESET 00:00
+// 🌙 RESET + RAPORT
 setInterval(async () => {
   const now = new Date();
 
@@ -103,19 +103,18 @@ setInterval(async () => {
 }, 60 * 1000);
 
 // 📥 wiadomości
-client.on('messageCreate', message => {
+client.on('messageCreate', async message => {
 
   if (message.channel.id !== CHANNEL_ID) return;
 
   const TWOJE_ID = '1168624048851402812';
 
-  // 🔒 ręczne dodanie km
+  // 🔧 ręczne dodanie km
   if (message.content.startsWith('!addkm')) {
 
     if (message.author.id !== TWOJE_ID) return;
 
     const km = parseInt(message.content.split(' ')[1]);
-
     if (!km) return message.reply('❌ Użyj: !addkm 1000');
 
     zrobioneKm += km;
@@ -126,12 +125,12 @@ client.on('messageCreate', message => {
     return message.channel.send(`✔ Dodano ${km} km`);
   }
 
-  // 🔥 KOMENDA RAPORT (TEST)
+  // 📊 raport
   if (message.content === '!raport') {
     return message.channel.send({ embeds: [generateReportEmbed()] });
   }
 
-  // 🔍 AUTO (TrucksBook)
+  // 🔥 TrucksBook
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
@@ -139,7 +138,6 @@ client.on('messageCreate', message => {
   const messageDate = new Date(message.createdTimestamp).toDateString();
   if (messageDate !== new Date().toDateString()) return;
 
-  // 👤 kierowca
   let driver = "Nieznany kierowca";
 
   if (embed.author && embed.author.name) {
@@ -149,7 +147,6 @@ client.on('messageCreate', message => {
   }
 
   let text = "";
-
   if (embed.title) text += embed.title + " ";
   if (embed.description) text += embed.description + " ";
 
@@ -165,7 +162,7 @@ client.on('messageCreate', message => {
   const km = parseInt(match[1].replace(/\s/g, ''));
   if (!km) return;
 
-  // 📊 liczenie
+  // 📊 licznik
   zrobioneKm += km;
   dzienneKm += km;
 
@@ -177,14 +174,12 @@ client.on('messageCreate', message => {
   const pozostalo = CEL_KM - zrobioneKm;
   const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
+  // 🚀 NOWE POWIADOMIENIE (lepsze)
   message.channel.send(
-    `🚛 **Nowa trasa!**\n` +
-    `👤 Kierowca: **${driver}**\n` +
-    `✔ +${km.toLocaleString()} km\n` +
-    `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
+    `✔ **${driver} +${km.toLocaleString()} km**\n\n` +
+    `📅 Dziś: **${dzienneKm.toLocaleString()} km**\n` +
     `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
     `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
-    `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
     `📈 ${procent}%`
   );
 });
