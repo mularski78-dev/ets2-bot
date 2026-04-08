@@ -87,11 +87,12 @@ function generateReportEmbed() {
     );
 }
 
-// 🌙 RESET + RAPORT
+// 🌙 RESET + RAPORT (NAPRAWIONY)
 setInterval(async () => {
   const now = getDETime();
 
-  if (now.getHours() === 0 && now.getMinutes() === 0) {
+  // ✅ zakres 00:00–00:01 + zabezpieczenie przed powtórką
+  if (now.getHours() === 0 && now.getMinutes() <= 1 && now.toDateString() !== lastReset) {
     try {
       const channel = await client.channels.fetch(CHANNEL_ID);
       await channel.send({ embeds: [generateReportEmbed()] });
