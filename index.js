@@ -13,7 +13,7 @@ let dzienneKm = 0;
 let drivers = {};
 let lastReset = new Date().toDateString();
 
-// 🇩🇪 czas DE
+// 🇩🇪 czas
 function getDETime() {
   return new Date(new Date().toLocaleString("de-DE", {
     timeZone: "Europe/Berlin"
@@ -81,7 +81,7 @@ const client = new Client({
   ]
 });
 
-// 📅 reset dnia (PEWNY)
+// 📅 RESET DNIA (pewne)
 setInterval(async () => {
   const today = getDETime().toDateString();
 
@@ -104,35 +104,47 @@ setInterval(async () => {
 
 }, 60000);
 
-// 📥 wiadomości
+// 📥 WIADOMOŚCI
 client.on('messageCreate', async message => {
 
-  if (message.channel.id !== CHANNEL_ID) return;
+  if (message.author.bot) return;
 
-  const TWOJE_ID = '1168624048851402812';
+  const content = message.content.toLowerCase().trim();
 
-  // ➕ ręczne km
-  if (message.content.startsWith('!addkm')) {
+  // ➕ ADD KM
+  if (content.startsWith('!addkm')) {
+    if (message.channel.id !== CHANNEL_ID) return;
+
+    const TWOJE_ID = '1168624048851402812';
     if (message.author.id !== TWOJE_ID) return;
 
-    const km = parseInt(message.content.split(' ')[1]);
+    const km = parseInt(content.split(' ')[1]);
     if (!km) return message.reply('❌ Użyj: !addkm 1000');
 
     zrobioneKm += km;
     dzienneKm += km;
+
+    if (!drivers[message.author.username]) drivers[message.author.username] = 0;
+    drivers[message.author.username] += km;
 
     saveData();
 
     return message.channel.send(`✔ Dodano ${km} km`);
   }
 
-  // 📊 raport (TOP 3 NA ŻYWO)
-  if (message.content === '!raport') {
-    return message.channel.send({ embeds: [generateReportEmbed()] });
+  // 📊 RAPORT
+  if (content === '!raport') {
+    if (message.channel.id !== CHANNEL_ID) return;
+
+    return message.channel.send({
+      embeds: [generateReportEmbed()]
+    });
   }
 
-  // 🚫 ignoruj inne
+  // 🚛 TrucksBook
   if (message.embeds.length === 0) return;
+
+  if (message.channel.id !== CHANNEL_ID) return;
 
   const embed = message.embeds[0];
 
@@ -142,7 +154,6 @@ client.on('messageCreate', async message => {
   else if (embed.footer?.text) driver = embed.footer.text;
 
   let text = "";
-
   if (embed.title) text += embed.title + " ";
   if (embed.description) text += embed.description + " ";
 
@@ -158,7 +169,6 @@ client.on('messageCreate', async message => {
   const km = parseInt(match[1].replace(/\s/g, ''));
   if (!km) return;
 
-  // 📊 dodawanie
   zrobioneKm += km;
   dzienneKm += km;
 
@@ -177,7 +187,7 @@ client.on('messageCreate', async message => {
   );
 });
 
-// ▶️ start
+// ▶️ START
 client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
 });
