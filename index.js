@@ -1,145 +1,199 @@
-const {
-    Client,
-    GatewayIntentBits,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    EmbedBuilder
-} = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const fs = require('fs');
 
-const {
-    joinVoiceChannel,
-    createAudioPlayer,
-    createAudioResource,
-    AudioPlayerStatus,
-    StreamType,
-    NoSubscriberBehavior,
-    VoiceConnectionStatus,
-    entersState
-} = require('@discordjs/voice');
-
-const { spawn } = require('child_process');
-const ffmpegPath = require('ffmpeg-static');
-
-// 🔑 KONFIG
+// 🔧 KONFIGURACJA
 const TOKEN = process.env.TOKEN;
-const CHANNEL_ID = 'TWOJE_ID_KANAŁU';
+const CHANNEL_ID = '1064716405972418630';
+const CEL_KM = 5000000;
 
-// 🎧 RADIO
-const STREAM_URL = 'https://ice5.somafm.com/fluid-128-mp3';
+// 📁 zapis danych
+const DATA_FILE = '/var/data/data.json';
 
+// 📊 dane
+let zrobioneKm = 0;
+let dzienneKm = 0;
+let drivers = {};
+let lastReset = new Date().toDateString();
+
+// 🕒 CZAS FRANKFURT (NIEMCY)
+function getDETime() {
+  return new Date(new Date().toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin"
+  }));
+}
+
+// 📥 wczytanie danych
+if (fs.existsSync(DATA_FILE)) {
+  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  zrobioneKm = data.zrobioneKm || 0;
+  dzienneKm = data.dzienneKm || 0;
+  drivers = data.drivers || {};
+  lastReset = data.lastReset || new Date().toDateString();
+}
+
+// 💾 zapis danych
+function saveData() {
+  fs.writeFileSync(DATA_FILE, JSON.stringify({
+    zrobioneKm,
+    dzienneKm,
+    drivers,
+    lastReset
+  }, null, 2));
+}
+
+// 🤖 bot
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildVoiceStates
-    ]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-let connection;
-let player = createAudioPlayer({
-    behaviors: {
-        noSubscriber: NoSubscriberBehavior.Play
-    }
-});
+// 🔥 RAPORT
+function generateReportEmbed() {
+  const sorted = Object.entries(drivers)
+    .sort((a, b) => b[1] - a[1]);
 
-// 🔥 URUCHOM RADIO
-function playRadio(channel) {
-    try {
-        connection = joinVoiceChannel({
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            adapterCreator: channel.guild.voiceAdapterCreator
-        });
+  let topText = "Brak danych";
+  if (sorted.length > 0) {
+    const medals = ["🥇", "🥈", "🥉"];
+    topText = sorted.slice(0, 3).map((d, i) =>
+      `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+    ).join("\n");
+  }
 
-        const ffmpeg = spawn(ffmpegPath, [
-            '-i', STREAM_URL,
-            '-analyzeduration', '0',
-            '-loglevel', '0',
-            '-f', 's16le',
-            '-ar', '48000',
-            '-ac', '2',
-            'pipe:1'
-        ]);
+  let allDrivers = "Brak danych";
+  if (sorted.length > 0) {
+    allDrivers = sorted.map(d =>
+      `👤 ${d[0]} — ${d[1].toLocaleString()} km`
+    ).join("\n");
+  }
 
-        const resource = createAudioResource(ffmpeg.stdout, {
-            inputType: StreamType.Raw
-        });
+  const pozostalo = CEL_KM - zrobioneKm;
+  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
-        player.play(resource);
-        connection.subscribe(player);
-
-        console.log('🎧 Radio uruchomione');
-
-    } catch (err) {
-        console.log('❌ Błąd:', err);
-    }
-}
-
-// 🛑 STOP
-function stopRadio() {
-    if (player) player.stop();
-    if (connection) connection.destroy();
-    console.log('⛔ Radio zatrzymane');
-}
-
-// 🎛 PANEL
-function sendPanel(channel) {
-    const embed = new EmbedBuilder()
-        .setTitle('📻 RADIO MANIECZKI')
-        .setDescription('Sterowanie radiem')
-        .setColor('Green');
-
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('play')
-            .setLabel('▶️ START')
-            .setStyle(ButtonStyle.Success),
-
-        new ButtonBuilder()
-            .setCustomId('stop')
-            .setLabel('⛔ STOP')
-            .setStyle(ButtonStyle.Danger)
+  return new EmbedBuilder()
+    .setColor(0x00AEFF)
+    .setTitle("🌙 RAPORT DZIENNY")
+    .addFields(
+      { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
+      { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
+      { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
+      { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
+      { name: "📈 Postęp", value: `${procent}%`, inline: true },
+      { name: "🏆 TOP 3", value: topText },
+      { name: "📋 WSZYSCY", value: allDrivers }
     );
-
-    channel.send({ embeds: [embed], components: [row] });
 }
 
-client.once('ready', async () => {
-    console.log(`✅ Zalogowano jako ${client.user.tag}`);
+// 🌙 RESET + RAPORT
+setInterval(async () => {
+  const now = getDETime();
 
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    sendPanel(channel);
+  if (now.getHours() === 0 && now.getMinutes() === 0) {
+    try {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      await channel.send({ embeds: [generateReportEmbed()] });
+    } catch (err) {
+      console.log("❌ Błąd raportu", err);
+    }
+
+    dzienneKm = 0;
+    drivers = {};
+    lastReset = now.toDateString();
+    saveData();
+
+    console.log("✅ RESET DNIA + RAPORT");
+  }
+
+}, 60 * 1000);
+
+// 📥 wiadomości
+client.on('messageCreate', async message => {
+
+  if (message.channel.id !== CHANNEL_ID) return;
+
+  const TWOJE_ID = '1168624048851402812';
+
+  // 🔧 ręczne dodanie km
+  if (message.content.startsWith('!addkm')) {
+
+    if (message.author.id !== TWOJE_ID) return;
+
+    const km = parseInt(message.content.split(' ')[1]);
+    if (!km) return message.reply('❌ Użyj: !addkm 1000');
+
+    zrobioneKm += km;
+    dzienneKm += km;
+
+    saveData();
+
+    return message.channel.send(`✔ Dodano ${km} km`);
+  }
+
+  // 📊 raport
+  if (message.content === '!raport') {
+    return message.channel.send({ embeds: [generateReportEmbed()] });
+  }
+
+  // 🔥 TrucksBook
+  if (message.embeds.length === 0) return;
+
+  const embed = message.embeds[0];
+
+  const messageDate = new Date(message.createdTimestamp).toDateString();
+  if (messageDate !== new Date().toDateString()) return;
+
+  let driver = "Nieznany kierowca";
+
+  if (embed.author && embed.author.name) {
+    driver = embed.author.name;
+  } else if (embed.footer && embed.footer.text) {
+    driver = embed.footer.text;
+  }
+
+  let text = "";
+  if (embed.title) text += embed.title + " ";
+  if (embed.description) text += embed.description + " ";
+
+  if (embed.fields) {
+    embed.fields.forEach(f => {
+      text += f.name + " " + f.value + " ";
+    });
+  }
+
+  const match = text.match(/(\d{1,3}(?:[\s,]\d{3})*|\d+)\s*km/i);
+  if (!match) return;
+
+  const km = parseInt(match[1].replace(/\s/g, ''));
+  if (!km) return;
+
+  // 📊 licznik
+  zrobioneKm += km;
+  dzienneKm += km;
+
+  if (!drivers[driver]) drivers[driver] = 0;
+  drivers[driver] += km;
+
+  saveData();
+
+  const pozostalo = CEL_KM - zrobioneKm;
+  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+
+  // 🚀 NOWE POWIADOMIENIE (lepsze)
+  message.channel.send(
+    `✔ **${driver} +${km.toLocaleString()} km**\n\n` +
+    `📅 Dziś: **${dzienneKm.toLocaleString()} km**\n` +
+    `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
+    `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
+    `📈 ${procent}%`
+  );
 });
 
-client.on('interactionCreate', async interaction => {
-    if (!interaction.isButton()) return;
-
-    const member = interaction.member;
-
-    if (!member.voice.channel) {
-        return interaction.reply({
-            content: '❌ Musisz być na kanale głosowym!',
-            ephemeral: true
-        });
-    }
-
-    if (interaction.customId === 'play') {
-        playRadio(member.voice.channel);
-
-        await interaction.reply({
-            content: '▶️ Radio wystartowało!',
-            ephemeral: true
-        });
-    }
-
-    if (interaction.customId === 'stop') {
-        stopRadio();
-
-        await interaction.reply({
-            content: '⛔ Radio zatrzymane!',
-            ephemeral: true
-        });
-    }
+// ✅ start
+client.once('ready', () => {
+  console.log(`Bot działa jako ${client.user.tag}`);
 });
 
 client.login(TOKEN);
