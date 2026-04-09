@@ -1,12 +1,10 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 
-// 🔧 KONFIGURACJA
+// 🔧 KONFIG
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
 const CEL_KM = 5000000;
-
-// 📁 zapis danych
 const DATA_FILE = '/var/data/data.json';
 
 // 📊 dane
@@ -15,14 +13,14 @@ let dzienneKm = 0;
 let drivers = {};
 let lastReset = new Date().toDateString();
 
-// 🕒 CZAS FRANKFURT (NIEMCY)
+// 🇩🇪 czas DE
 function getDETime() {
   return new Date(new Date().toLocaleString("de-DE", {
     timeZone: "Europe/Berlin"
   }));
 }
 
-// 📥 wczytanie danych
+// 📥 wczytanie
 if (fs.existsSync(DATA_FILE)) {
   const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
   zrobioneKm = data.zrobioneKm || 0;
@@ -31,7 +29,7 @@ if (fs.existsSync(DATA_FILE)) {
   lastReset = data.lastReset || new Date().toDateString();
 }
 
-// 💾 zapis danych
+// 💾 zapis
 function saveData() {
   fs.writeFileSync(DATA_FILE, JSON.stringify({
     zrobioneKm,
@@ -41,35 +39,23 @@ function saveData() {
   }, null, 2));
 }
 
-// 🤖 bot
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
-});
-
-// 🔥 RAPORT
-function generateReportEmbed() {
+// 🏆 TOP 3
+function getTop3() {
   const sorted = Object.entries(drivers)
-    .sort((a, b) => b[1] - a[1]);
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
 
-  let topText = "Brak danych";
-  if (sorted.length > 0) {
-    const medals = ["🥇", "🥈", "🥉"];
-    topText = sorted.slice(0, 3).map((d, i) =>
-      `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
-    ).join("\n");
-  }
+  if (sorted.length === 0) return "Brak danych";
 
-  let allDrivers = "Brak danych";
-  if (sorted.length > 0) {
-    allDrivers = sorted.map(d =>
-      `👤 ${d[0]} — ${d[1].toLocaleString()} km`
-    ).join("\n");
-  }
+  const medals = ["🥇", "🥈", "🥉"];
 
+  return sorted.map((d, i) =>
+    `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+  ).join("\n");
+}
+
+// 📊 embed raportu
+function generateReportEmbed() {
   const pozostalo = CEL_KM - zrobioneKm;
   const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
@@ -82,16 +68,24 @@ function generateReportEmbed() {
       { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
       { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
       { name: "📈 Postęp", value: `${procent}%`, inline: true },
-      { name: "🏆 TOP 3", value: topText },
-      { name: "📋 WSZYSCY", value: allDrivers }
+      { name: "🏆 TOP 3", value: getTop3() }
     );
 }
 
-// 🌙 RESET + RAPORT
-setInterval(async () => {
-  const now = getDETime();
+// 🤖 bot
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
 
-  if (now.getHours() === 0 && now.getMinutes() === 0) {
+// 📅 reset dnia (PEWNY)
+setInterval(async () => {
+  const today = getDETime().toDateString();
+
+  if (today !== lastReset) {
     try {
       const channel = await client.channels.fetch(CHANNEL_ID);
       await channel.send({ embeds: [generateReportEmbed()] });
@@ -101,13 +95,14 @@ setInterval(async () => {
 
     dzienneKm = 0;
     drivers = {};
-    lastReset = now.toDateString();
+    lastReset = today;
+
     saveData();
 
-    console.log("✅ RESET DNIA + RAPORT");
+    console.log("✅ RESET + RAPORT");
   }
 
-}, 60 * 1000);
+}, 60000);
 
 // 📥 wiadomości
 client.on('messageCreate', async message => {
@@ -116,9 +111,8 @@ client.on('messageCreate', async message => {
 
   const TWOJE_ID = '1168624048851402812';
 
-  // 🔧 ręczne dodanie km
+  // ➕ ręczne km
   if (message.content.startsWith('!addkm')) {
-
     if (message.author.id !== TWOJE_ID) return;
 
     const km = parseInt(message.content.split(' ')[1]);
@@ -132,28 +126,23 @@ client.on('messageCreate', async message => {
     return message.channel.send(`✔ Dodano ${km} km`);
   }
 
-  // 📊 raport
+  // 📊 raport (TOP 3 NA ŻYWO)
   if (message.content === '!raport') {
     return message.channel.send({ embeds: [generateReportEmbed()] });
   }
 
-  // 🔥 TrucksBook
+  // 🚫 ignoruj inne
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
 
-  const messageDate = new Date(message.createdTimestamp).toDateString();
-  if (messageDate !== new Date().toDateString()) return;
-
   let driver = "Nieznany kierowca";
 
-  if (embed.author && embed.author.name) {
-    driver = embed.author.name;
-  } else if (embed.footer && embed.footer.text) {
-    driver = embed.footer.text;
-  }
+  if (embed.author?.name) driver = embed.author.name;
+  else if (embed.footer?.text) driver = embed.footer.text;
 
   let text = "";
+
   if (embed.title) text += embed.title + " ";
   if (embed.description) text += embed.description + " ";
 
@@ -169,7 +158,7 @@ client.on('messageCreate', async message => {
   const km = parseInt(match[1].replace(/\s/g, ''));
   if (!km) return;
 
-  // 📊 licznik
+  // 📊 dodawanie
   zrobioneKm += km;
   dzienneKm += km;
 
@@ -178,20 +167,17 @@ client.on('messageCreate', async message => {
 
   saveData();
 
-  const pozostalo = CEL_KM - zrobioneKm;
   const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
-  // 🚀 NOWE POWIADOMIENIE (lepsze)
   message.channel.send(
-    `✔ **${driver} +${km.toLocaleString()} km**\n\n` +
-    `📅 Dziś: **${dzienneKm.toLocaleString()} km**\n` +
+    `✔ **${driver} +${km.toLocaleString()} km**\n` +
+    `📅 Dziś: ${dzienneKm.toLocaleString()} km\n` +
     `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
-    `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
     `📈 ${procent}%`
   );
 });
 
-// ✅ start
+// ▶️ start
 client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
 });
