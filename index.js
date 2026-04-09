@@ -1,200 +1,169 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const fs = require('fs');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle 
+} = require('discord.js');
 
-// 🔧 KONFIGURACJA
-const TOKEN = process.env.TOKEN;
-const CHANNEL_ID = '1064716405972418630';
-const CEL_KM = 5000000;
+const {
+    joinVoiceChannel,
+    createAudioPlayer,
+    createAudioResource,
+    AudioPlayerStatus,
+    NoSubscriberBehavior
+} = require('@discordjs/voice');
 
-// 📁 zapis danych
-const DATA_FILE = '/var/data/data.json';
+const { spawn } = require('child_process');
+const express = require('express');
 
-// 📊 dane
-let zrobioneKm = 0;
-let dzienneKm = 0;
-let drivers = {};
-let lastReset = new Date().toDateString();
-
-// 🕒 CZAS FRANKFURT (NIEMCY)
-function getDETime() {
-  return new Date(new Date().toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin"
-  }));
-}
-
-// 📥 wczytanie danych
-if (fs.existsSync(DATA_FILE)) {
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  zrobioneKm = data.zrobioneKm || 0;
-  dzienneKm = data.dzienneKm || 0;
-  drivers = data.drivers || {};
-  lastReset = data.lastReset || new Date().toDateString();
-}
-
-// 💾 zapis danych
-function saveData() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify({
-    zrobioneKm,
-    dzienneKm,
-    drivers,
-    lastReset
-  }, null, 2));
-}
-
-// 🤖 bot
+// 🔑 BOT
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
+    ]
 });
 
-// 🔥 RAPORT
-function generateReportEmbed() {
-  const sorted = Object.entries(drivers)
-    .sort((a, b) => b[1] - a[1]);
+const TOKEN = process.env.TOKEN;
 
-  let topText = "Brak danych";
-  if (sorted.length > 0) {
-    const medals = ["🥇", "🥈", "🥉"];
-    topText = sorted.slice(0, 3).map((d, i) =>
-      `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
-    ).join("\n");
-  }
+// 🔥 MANIECZKI STYLE STREAM
+const STREAM_URL = 'https://stream.laut.fm/trance';
 
-  let allDrivers = "Brak danych";
-  if (sorted.length > 0) {
-    allDrivers = sorted.map(d =>
-      `👤 ${d[0]} — ${d[1].toLocaleString()} km`
-    ).join("\n");
-  }
+let connection;
+let player;
 
-  const pozostalo = CEL_KM - zrobioneKm;
-  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+// 🌐 KEEP ALIVE (RENDER)
+const app = express();
+app.get("/", (req, res) => res.send("Radio działa 🎧"));
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🌐 Serwer działa na porcie ${PORT}`));
 
-  return new EmbedBuilder()
-    .setColor(0x00AEFF)
-    .setTitle("🌙 RAPORT DZIENNY")
-    .addFields(
-      { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
-      { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
-      { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
-      { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
-      { name: "📈 Postęp", value: `${procent}%`, inline: true },
-      { name: "🏆 TOP 3", value: topText },
-      { name: "📋 WSZYSCY", value: allDrivers }
-    );
+// 🎧 FUNKCJA ODTWARZANIA
+function playRadio() {
+    const ffmpeg = spawn('ffmpeg', [
+        '-reconnect', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '5',
+        '-i', STREAM_URL,
+        '-f', 's16le',
+        '-ar', '48000',
+        '-ac', '2',
+        'pipe:1'
+    ]);
+
+    const resource = createAudioResource(ffmpeg.stdout);
+    player.play(resource);
+
+    ffmpeg.stderr.on('data', () => {}); // ignoruj spam
 }
 
-// 🌙 RESET + RAPORT (NAPRAWIONY)
-setInterval(async () => {
-  const now = getDETime();
+// 🎛️ PANEL
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
 
-  // ✅ zakres 00:00–00:01 + zabezpieczenie przed powtórką
-  if (now.getHours() === 0 && now.getMinutes() <= 1 && now.toDateString() !== lastReset) {
-    try {
-      const channel = await client.channels.fetch(CHANNEL_ID);
-      await channel.send({ embeds: [generateReportEmbed()] });
-    } catch (err) {
-      console.log("❌ Błąd raportu", err);
+    if (message.content === '!panel') {
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('play').setLabel('▶️ Start').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('stop').setLabel('⛔ Stop').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('move').setLabel('🔄 Move').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('status').setLabel('📻 Status').setStyle(ButtonStyle.Secondary)
+        );
+
+        message.channel.send({
+            content: '📻 PANEL MANIECZKI',
+            components: [row]
+        });
+    }
+});
+
+// 🎛️ BUTTONY
+client.on('interactionCreate', async interaction => {
+    if (!interaction.isButton()) return;
+
+    const channel = interaction.member.voice.channel;
+
+    // ▶️ START
+    if (interaction.customId === 'play') {
+        if (!channel) {
+            return interaction.reply({ content: '❌ Wejdź na voice!', flags: 64 });
+        }
+
+        if (connection && connection.state.status !== 'destroyed') {
+            connection.destroy();
+        }
+
+        connection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId: interaction.guild.id,
+            adapterCreator: interaction.guild.voiceAdapterCreator,
+            selfDeaf: false
+        });
+
+        player = createAudioPlayer({
+            behaviors: { noSubscriber: NoSubscriberBehavior.Play }
+        });
+
+        connection.subscribe(player);
+
+        playRadio();
+
+        // 🔁 AUTO RECONNECT
+        player.on(AudioPlayerStatus.Idle, () => {
+            playRadio();
+        });
+
+        interaction.reply(`🔥 Manieczki grają na ${channel.name}`);
     }
 
-    dzienneKm = 0;
-    drivers = {};
-    lastReset = now.toDateString();
-    saveData();
+    // ⛔ STOP
+    if (interaction.customId === 'stop') {
+        if (connection && connection.state.status !== 'destroyed') {
+            connection.destroy();
+            connection = null;
+        }
 
-    console.log("✅ RESET DNIA + RAPORT");
-  }
+        interaction.reply('⛔ Radio zatrzymane');
+    }
 
-}, 60 * 1000);
+    // 🔄 MOVE
+    if (interaction.customId === 'move') {
+        if (!channel) {
+            return interaction.reply({ content: '❌ Wejdź na voice!', flags: 64 });
+        }
 
-// 📥 wiadomości
-client.on('messageCreate', async message => {
+        if (connection && connection.state.status !== 'destroyed') {
+            connection.destroy();
+        }
 
-  if (message.channel.id !== CHANNEL_ID) return;
+        connection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId: interaction.guild.id,
+            adapterCreator: interaction.guild.voiceAdapterCreator
+        });
 
-  const TWOJE_ID = '1168624048851402812';
+        connection.subscribe(player);
+        playRadio();
 
-  // 🔧 ręczne dodanie km
-  if (message.content.startsWith('!addkm')) {
+        interaction.reply(`🔄 Przeniesiono na ${channel.name}`);
+    }
 
-    if (message.author.id !== TWOJE_ID) return;
-
-    const km = parseInt(message.content.split(' ')[1]);
-    if (!km) return message.reply('❌ Użyj: !addkm 1000');
-
-    zrobioneKm += km;
-    dzienneKm += km;
-
-    saveData();
-
-    return message.channel.send(`✔ Dodano ${km} km`);
-  }
-
-  // 📊 raport
-  if (message.content === '!raport') {
-    return message.channel.send({ embeds: [generateReportEmbed()] });
-  }
-
-  // 🔥 TrucksBook
-  if (message.embeds.length === 0) return;
-
-  const embed = message.embeds[0];
-
-  const messageDate = new Date(message.createdTimestamp).toDateString();
-  if (messageDate !== new Date().toDateString()) return;
-
-  let driver = "Nieznany kierowca";
-
-  if (embed.author && embed.author.name) {
-    driver = embed.author.name;
-  } else if (embed.footer && embed.footer.text) {
-    driver = embed.footer.text;
-  }
-
-  let text = "";
-  if (embed.title) text += embed.title + " ";
-  if (embed.description) text += embed.description + " ";
-
-  if (embed.fields) {
-    embed.fields.forEach(f => {
-      text += f.name + " " + f.value + " ";
-    });
-  }
-
-  const match = text.match(/(\d{1,3}(?:[\s,]\d{3})*|\d+)\s*km/i);
-  if (!match) return;
-
-  const km = parseInt(match[1].replace(/\s/g, ''));
-  if (!km) return;
-
-  // 📊 licznik
-  zrobioneKm += km;
-  dzienneKm += km;
-
-  if (!drivers[driver]) drivers[driver] = 0;
-  drivers[driver] += km;
-
-  saveData();
-
-  const pozostalo = CEL_KM - zrobioneKm;
-  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
-
-  // 🚀 NOWE POWIADOMIENIE (lepsze)
-  message.channel.send(
-    `✔ **${driver} +${km.toLocaleString()} km**\n\n` +
-    `📅 Dziś: **${dzienneKm.toLocaleString()} km**\n` +
-    `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
-    `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
-    `📈 ${procent}%`
-  );
+    // 📻 STATUS
+    if (interaction.customId === 'status') {
+        if (connection) {
+            interaction.reply('📻 Radio gra 🔥');
+        } else {
+            interaction.reply('❌ Radio wyłączone');
+        }
+    }
 });
 
-// ✅ start
-client.once('ready', () => {
-  console.log(`Bot działa jako ${client.user.tag}`);
+// 🔥 READY FIX
+client.once('clientReady', () => {
+    console.log(`✅ Zalogowano jako ${client.user.tag}`);
 });
 
 client.login(TOKEN);
