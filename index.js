@@ -13,25 +13,26 @@ const DATA_FILE = '/var/data/data.json';
 let zrobioneKm = 0;
 let dzienneKm = 0;
 let drivers = {};
-let lastReset = new Date().toDateString();
+let lastReset = null;
 
-// 🕒 CZAS FRANKFURT (NIEMCY)
+// 🕒 czas Berlin
 function getDETime() {
   return new Date(new Date().toLocaleString("de-DE", {
     timeZone: "Europe/Berlin"
   }));
 }
 
-// 📥 wczytanie danych
+// 📥 load danych
 if (fs.existsSync(DATA_FILE)) {
   const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+
   zrobioneKm = data.zrobioneKm || 0;
   dzienneKm = data.dzienneKm || 0;
   drivers = data.drivers || {};
-  lastReset = data.lastReset || new Date().toDateString();
+  lastReset = data.lastReset || null;
 }
 
-// 💾 zapis danych
+// 💾 save danych
 function saveData() {
   fs.writeFileSync(DATA_FILE, JSON.stringify({
     zrobioneKm,
@@ -50,25 +51,21 @@ const client = new Client({
   ]
 });
 
-// 🔥 RAPORT
+// 📊 embed raport
 function generateReportEmbed() {
-  const sorted = Object.entries(drivers)
-    .sort((a, b) => b[1] - a[1]);
+  const sorted = Object.entries(drivers).sort((a, b) => b[1] - a[1]);
 
-  let topText = "Brak danych";
-  if (sorted.length > 0) {
-    const medals = ["🥇", "🥈", "🥉"];
-    topText = sorted.slice(0, 3).map((d, i) =>
-      `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
-    ).join("\n");
-  }
+  const medals = ["🥇", "🥈", "🥉"];
 
-  let allDrivers = "Brak danych";
-  if (sorted.length > 0) {
-    allDrivers = sorted.map(d =>
-      `👤 ${d[0]} — ${d[1].toLocaleString()} km`
-    ).join("\n");
-  }
+  const topText = sorted.length
+    ? sorted.slice(0, 3).map((d, i) =>
+        `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+      ).join("\n")
+    : "Brak danych";
+
+  const allDrivers = sorted.length
+    ? sorted.map(d => `👤 ${d[0]} — ${d[1].toLocaleString()} km`).join("\n")
+    : "Brak danych";
 
   const pozostalo = CEL_KM - zrobioneKm;
   const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
@@ -87,38 +84,55 @@ function generateReportEmbed() {
     );
 }
 
-// 🌙 RESET + RAPORT
+// 🔁 SYSTEM DZIEŃ + TOP3 + RESET (100% STABILNY)
 setInterval(async () => {
   const now = getDETime();
+  const today = now.toDateString();
 
-  if (now.getHours() === 0 && now.getMinutes() === 0) {
+  // 🏁 TOP 3 (23:58)
+  if (now.getHours() === 23 && now.getMinutes() === 58) {
+    const sorted = Object.entries(drivers)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+
+    const medals = ["🥇", "🥈", "🥉"];
+
+    const topText = sorted.length
+      ? sorted.map((d, i) =>
+          `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+        ).join("\n")
+      : "Brak danych";
+
     try {
       const channel = await client.channels.fetch(CHANNEL_ID);
-      await channel.send({ embeds: [generateReportEmbed()] });
+      await channel.send(`🏁 **TOP 3 DNIA**\n\n${topText}`);
     } catch (err) {
-      console.log("❌ Błąd raportu", err);
+      console.log("❌ TOP3 ERROR", err);
     }
+  }
+
+  // 🔄 RESET DNIA (BEZ BUGA 00:00)
+  if (lastReset !== today) {
+    console.log("🔄 RESET DNIA:", today);
 
     dzienneKm = 0;
     drivers = {};
-    lastReset = now.toDateString();
-    saveData();
+    lastReset = today;
 
-    console.log("✅ RESET DNIA + RAPORT");
+    saveData();
   }
 
 }, 60 * 1000);
 
-// 📥 wiadomości
+// 📥 wiadomości (TruckBook)
 client.on('messageCreate', async message => {
 
   if (message.channel.id !== CHANNEL_ID) return;
 
   const TWOJE_ID = '1168624048851402812';
 
-  // 🔧 ręczne dodanie km
+  // ➕ add km
   if (message.content.startsWith('!addkm')) {
-
     if (message.author.id !== TWOJE_ID) return;
 
     const km = parseInt(message.content.split(' ')[1]);
@@ -137,7 +151,6 @@ client.on('messageCreate', async message => {
     return message.channel.send({ embeds: [generateReportEmbed()] });
   }
 
-  // 🔥 TrucksBook
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
@@ -147,11 +160,8 @@ client.on('messageCreate', async message => {
 
   let driver = "Nieznany kierowca";
 
-  if (embed.author && embed.author.name) {
-    driver = embed.author.name;
-  } else if (embed.footer && embed.footer.text) {
-    driver = embed.footer.text;
-  }
+  if (embed.author?.name) driver = embed.author.name;
+  else if (embed.footer?.text) driver = embed.footer.text;
 
   let text = "";
   if (embed.title) text += embed.title + " ";
@@ -169,7 +179,6 @@ client.on('messageCreate', async message => {
   const km = parseInt(match[1].replace(/\s/g, ''));
   if (!km) return;
 
-  // 📊 licznik
   zrobioneKm += km;
   dzienneKm += km;
 
@@ -181,7 +190,6 @@ client.on('messageCreate', async message => {
   const pozostalo = CEL_KM - zrobioneKm;
   const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
-  // 🚀 NOWE POWIADOMIENIE (lepsze)
   message.channel.send(
     `✔ **${driver} +${km.toLocaleString()} km**\n\n` +
     `📅 Dziś: **${dzienneKm.toLocaleString()} km**\n` +
@@ -194,6 +202,19 @@ client.on('messageCreate', async message => {
 // ✅ start
 client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
+
+  // 🔁 backup reset po restarcie
+  const today = getDETime().toDateString();
+
+  if (lastReset !== today) {
+    console.log("🔁 BOOT RESET CHECK");
+
+    dzienneKm = 0;
+    drivers = {};
+    lastReset = today;
+
+    saveData();
+  }
 });
 
 client.login(TOKEN);
