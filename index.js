@@ -6,7 +6,7 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
 const CEL_KM = 5000000;
 
-// 📁 zapis danych
+// 📁 plik danych
 const DATA_FILE = '/var/data/data.json';
 
 // 📊 dane
@@ -15,7 +15,7 @@ let dzienneKm = 0;
 let drivers = {};
 let lastReset = null;
 
-// 🕒 czas Berlin
+// 🕒 Berlin time
 function getDETime() {
   return new Date(new Date().toLocaleString("de-DE", {
     timeZone: "Europe/Berlin"
@@ -84,13 +84,14 @@ function generateReportEmbed() {
     );
 }
 
-// 🔁 SYSTEM DZIEŃ + TOP3 + RESET (100% STABILNY)
+// 🔁 SYSTEM RESET + TOP3 + STABILNOŚĆ
 setInterval(async () => {
   const now = getDETime();
   const today = now.toDateString();
 
-  // 🏁 TOP 3 (23:58)
+  // 🏁 TOP 3 23:58
   if (now.getHours() === 23 && now.getMinutes() === 58) {
+
     const sorted = Object.entries(drivers)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3);
@@ -124,7 +125,7 @@ setInterval(async () => {
 
 }, 60 * 1000);
 
-// 📥 wiadomości (TruckBook)
+// 📥 MESSAGE HANDLER
 client.on('messageCreate', async message => {
 
   if (message.channel.id !== CHANNEL_ID) return;
@@ -151,6 +152,25 @@ client.on('messageCreate', async message => {
     return message.channel.send({ embeds: [generateReportEmbed()] });
   }
 
+  // 🏆 TOP3 NA ŻYWO (NOWA KOMENDA)
+  if (message.content === '!top3') {
+
+    const sorted = Object.entries(drivers)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+
+    const medals = ["🥇", "🥈", "🥉"];
+
+    const topText = sorted.length > 0
+      ? sorted.map((d, i) =>
+          `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+        ).join("\n")
+      : "Brak danych";
+
+    return message.channel.send(`🏆 **TOP 3 (LIVE)**\n\n${topText}`);
+  }
+
+  // 🚛 TRUCKBOOK EMBED
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
@@ -199,11 +219,10 @@ client.on('messageCreate', async message => {
   );
 });
 
-// ✅ start
+// ✅ START
 client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
 
-  // 🔁 backup reset po restarcie
   const today = getDETime().toDateString();
 
   if (lastReset !== today) {
