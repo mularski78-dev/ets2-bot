@@ -15,17 +15,17 @@ let dzienneKm = 0;
 let drivers = {};
 let lastReset = null;
 
-// 🔒 BLOKADA DUPLIKATÓW
+// 🧠 KLUCZ FIX: dzień roboczy
+let currentDay = new Date().toISOString().split('T')[0];
+
+// 🔒 anty duble
 let lastKm = 0;
 let lastDriver = "";
 let lastTime = 0;
 
-// 🧠 DZIEŃ (FIX KLUCZOWY)
-let currentDay = "";
-
-// 🕒 TIME (SAFE FORMAT)
+// 🕒 dzień
 function getDay() {
-  return new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  return new Date().toISOString().split('T')[0];
 }
 
 // 📥 LOAD
@@ -37,35 +37,31 @@ if (fs.existsSync(DATA_FILE)) {
     dzienneKm = data.dzienneKm ?? 0;
     drivers = data.drivers ?? {};
 
-    lastReset = data.lastReset && data.lastReset !== "Invalid Date"
-      ? data.lastReset
-      : getDay();
+    lastReset = data.lastReset ?? getDay();
+
+    // 🔥 KLUCZ: NIE RESETUJEMY DNIA PO RESTART
+    currentDay = lastReset;
 
   } catch (err) {
     console.log("❌ JSON ERROR:", err);
+
     lastReset = getDay();
+    currentDay = lastReset;
   }
 } else {
   lastReset = getDay();
+  currentDay = lastReset;
 }
 
-// 💾 SAVE (SAFE 100%)
+// 💾 SAVE
 function saveData() {
   try {
-
-    const safeReset = (!lastReset || lastReset === "Invalid Date")
-      ? getDay()
-      : lastReset;
-
-    lastReset = safeReset;
-
     fs.writeFileSync(DATA_FILE, JSON.stringify({
       zrobioneKm,
       dzienneKm,
       drivers,
       lastReset
     }, null, 2));
-
   } catch (err) {
     console.log("❌ SAVE ERROR:", err);
   }
@@ -80,17 +76,17 @@ const client = new Client({
   ]
 });
 
-// 🔁 LOOP
+// 🔁 LOOP (RESET DNIA + TOP3)
 setInterval(async () => {
   const today = getDay();
 
-  // 🔥 RESET DNIA (100% STABILNY)
-  if (currentDay !== today) {
+  // 🔥 RESET DNIA (SAFE)
+  if (today !== currentDay) {
     console.log("🔄 NOWY DZIEŃ:", today);
 
     currentDay = today;
-    dzienneKm = 0;
     lastReset = today;
+    dzienneKm = 0;
 
     saveData();
   }
@@ -156,6 +152,7 @@ client.on('messageCreate', async message => {
     return message.channel.send(`🏆 **TOP 3 (LIVE)**\n\n${topText}`);
   }
 
+  // 🚛 LOGI
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
@@ -189,7 +186,6 @@ client.on('messageCreate', async message => {
     driver === lastDriver &&
     nowTime - lastTime < 5000
   ) {
-    console.log("🚫 DUPLIKAT ZABLOKOWANY");
     return;
   }
 
