@@ -23,6 +23,9 @@ let lastKm = 0;
 let lastDriver = "";
 let lastTime = 0;
 
+// 🔒 NOWE — blokada po ID wiadomości (FIX DUPLIKATÓW)
+let lastMessageId = "";
+
 // 📅 dzień
 function getDay() {
   return new Date().toISOString().split('T')[0];
@@ -154,6 +157,10 @@ client.on('messageCreate', async message => {
 
   // 🚛 TRUCKBOOK EMBED
   if (!message.embeds || message.embeds.length === 0) return;
+
+  // 🔒 FIX DUPLIKATÓW (NAJWAŻNIEJSZE)
+  if (message.id === lastMessageId) return;
+  lastMessageId = message.id;
 
   const embed = message.embeds[0];
 
