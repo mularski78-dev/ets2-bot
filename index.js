@@ -15,7 +15,7 @@ let dzienneKm = 0;
 let drivers = {};
 let lastReset = null;
 
-// 🧠 dzień roboczy
+// 🧠 dzień roboczy (FIX)
 let currentDay = new Date().toISOString().split('T')[0];
 
 // 🔒 anty duble
@@ -77,6 +77,7 @@ const client = new Client({
 setInterval(async () => {
   const today = getDay();
 
+  // 🔥 RESET DNIA (tylko raz)
   if (today !== currentDay) {
     console.log("🔄 NOWY DZIEŃ:", today);
 
@@ -87,6 +88,7 @@ setInterval(async () => {
     saveData();
   }
 
+  // 🏁 TOP 3 o 23:58
   const now = new Date();
   if (now.getHours() === 23 && now.getMinutes() === 58) {
     const sorted = Object.entries(drivers)
@@ -114,14 +116,11 @@ setInterval(async () => {
 // 📥 MESSAGE HANDLER
 client.on('messageCreate', async message => {
 
-  // 🔥 NAJWAŻNIEJSZE — ignoruj boty (NAPRAWIA TWÓJ PROBLEM)
-  if (message.author.bot) return;
-
   if (message.channel.id !== CHANNEL_ID) return;
 
   const TWOJE_ID = '1168624048851402812';
 
-  // ➕ add km
+  // ➕ dodawanie km
   if (message.content.startsWith('!addkm')) {
     if (message.author.id !== TWOJE_ID) return;
 
@@ -189,18 +188,15 @@ client.on('messageCreate', async message => {
     return message.channel.send({ embeds: [embed] });
   }
 
-  // 🚛 LOGI
+  // 🚛 LOGI (TruckersMP / VTC)
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
 
-  let driver = null;
+  let driver = "Nieznany kierowca";
 
   if (embed.author?.name) driver = embed.author.name;
   else if (embed.footer?.text) driver = embed.footer.text;
-
-  // ❌ jeśli brak kierowcy → ignoruj
-  if (!driver) return;
 
   let text = "";
   if (embed.title) text += embed.title + " ";
@@ -254,4 +250,4 @@ client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
 });
 
-client.login(TOKEN);
+client.login(TOKEN); sprawdz co i jak wyswietki na dc kiedy wszystko pokolei
