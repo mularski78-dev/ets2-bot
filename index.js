@@ -27,7 +27,7 @@ function getDETime() {
   }));
 }
 
-// 📥 LOAD
+// 📥 LOAD (HARD FIX INVALID DATE)
 if (fs.existsSync(DATA_FILE)) {
   try {
     const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
@@ -36,7 +36,6 @@ if (fs.existsSync(DATA_FILE)) {
     dzienneKm = data.dzienneKm ?? 0;
     drivers = data.drivers ?? {};
 
-    // 🔥 NAPRAWA LAST RESET (NIGDY JUŻ INVALID DATE)
     if (!data.lastReset || data.lastReset === "Invalid Date") {
       lastReset = getDETime().toDateString();
     } else {
@@ -51,15 +50,22 @@ if (fs.existsSync(DATA_FILE)) {
   lastReset = getDETime().toDateString();
 }
 
-// 💾 SAVE
+// 💾 SAVE (HARD PROTECTION)
 function saveData() {
   try {
+
+    if (!lastReset || lastReset === "Invalid Date") {
+      lastReset = getDETime().toDateString();
+      console.log("⚠️ FIX: lastReset auto-corrected");
+    }
+
     fs.writeFileSync(DATA_FILE, JSON.stringify({
       zrobioneKm,
       dzienneKm,
       drivers,
       lastReset
     }, null, 2));
+
   } catch (err) {
     console.log("❌ SAVE ERROR:", err);
   }
@@ -92,7 +98,6 @@ function generateReportEmbed() {
       ).join("\n")
     : "Brak danych";
 
-  const pozostalo = CEL_KM - zrobioneKm;
   const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
   return new EmbedBuilder()
@@ -135,7 +140,7 @@ setInterval(async () => {
     }
   }
 
-  // 🔄 RESET DNIA (JUŻ DZIAŁA POPRAWNIE)
+  // 🔄 RESET DNIA
   if (lastReset !== today) {
     console.log("🔄 RESET DNIA:", today);
 
@@ -154,7 +159,6 @@ client.on('messageCreate', async message => {
 
   const TWOJE_ID = '1168624048851402812';
 
-  // ➕ MANUAL ADD KM
   if (message.content.startsWith('!addkm')) {
     if (message.author.id !== TWOJE_ID) return;
 
@@ -168,12 +172,10 @@ client.on('messageCreate', async message => {
     return message.channel.send(`✔ Dodano ${km} km`);
   }
 
-  // 📊 RAPORT
   if (message.content === '!raport') {
     return message.channel.send({ embeds: [generateReportEmbed()] });
   }
 
-  // 🏆 TOP3 LIVE
   if (message.content === '!top3') {
     const sorted = Object.entries(drivers)
       .sort((a, b) => b[1] - a[1])
@@ -190,7 +192,6 @@ client.on('messageCreate', async message => {
     return message.channel.send(`🏆 **TOP 3 (LIVE)**\n\n${topText}`);
   }
 
-  // 🚛 TRUCKBOOK + POWIADOMIENIA
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
@@ -216,7 +217,7 @@ client.on('messageCreate', async message => {
   const km = parseInt(match[1].replace(/\s/g, ''));
   if (!km) return;
 
-  // 🔒 BLOKADA DUPLIKATU
+  // 🔒 ANTY DUPLIKAT
   const nowTime = Date.now();
 
   if (
