@@ -41,7 +41,7 @@ if (fs.existsSync(DATA_FILE)) {
   }
 }
 
-// 💾 SAVE (SAFE - NO WIPE)
+// 💾 SAVE (SAFE)
 function saveData() {
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify({
@@ -64,7 +64,7 @@ const client = new Client({
   ]
 });
 
-// 📊 EMBED RAPORT
+// 📊 RAPORT
 function generateReportEmbed() {
   const sorted = Object.entries(drivers).sort((a, b) => b[1] - a[1]);
 
@@ -124,7 +124,7 @@ setInterval(async () => {
     }
   }
 
-  // 🔄 RESET (SAFE)
+  // 🔄 RESET DNIA
   if (lastReset !== today) {
     console.log("🔄 RESET DNIA:", today);
 
@@ -180,13 +180,10 @@ client.on('messageCreate', async message => {
     return message.channel.send(`🏆 **TOP 3 (LIVE)**\n\n${topText}`);
   }
 
-  // 🚛 TRUCKBOOK
+  // 🚛 TRUCKBOOK (NAPRAWIONE – BEZ FILTRA DATY)
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
-
-  const messageDate = new Date(message.createdTimestamp).toDateString();
-  if (messageDate !== getDETime().toDateString()) return;
 
   let driver = "Nieznany kierowca";
 
