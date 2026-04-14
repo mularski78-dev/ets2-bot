@@ -114,6 +114,9 @@ setInterval(async () => {
 // 📥 MESSAGE HANDLER
 client.on('messageCreate', async message => {
 
+  // 🔥 FIX KLUCZOWY: NIE BLOKUJ EMBEDÓW TRUCKBOOKA
+  if (message.author.bot && message.embeds.length === 0) return;
+
   if (message.channel.id !== CHANNEL_ID) return;
 
   const TWOJE_ID = '1168624048851402812';
@@ -149,7 +152,7 @@ client.on('messageCreate', async message => {
     return message.channel.send(`🏆 **TOP 3 (LIVE)**\n\n${topText}`);
   }
 
-  // 🚛 EMBED LOGS
+  // 🚛 TRUCKBOOK EMBED
   if (!message.embeds || message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
@@ -195,7 +198,7 @@ client.on('messageCreate', async message => {
 
   saveData();
 
-  // 💥 DODANE: CEL + PROGRESS
+  // 💥 CEL + %
   const pozostalo = CEL_KM - zrobioneKm;
   const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
