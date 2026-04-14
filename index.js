@@ -15,6 +15,11 @@ let dzienneKm = 0;
 let drivers = {};
 let lastReset = null;
 
+// 🔒 BLOKADA DUPLIKATÓW
+let lastKm = 0;
+let lastDriver = "";
+let lastTime = 0;
+
 // 🕒 Berlin time
 function getDETime() {
   return new Date(new Date().toLocaleString("de-DE", {
@@ -124,7 +129,7 @@ setInterval(async () => {
     }
   }
 
-  // 🔄 RESET DNIA (NAPRAWIONE)
+  // 🔄 RESET DNIA
   if (lastReset !== today) {
     console.log("🔄 RESET DNIA:", today);
 
@@ -179,7 +184,7 @@ client.on('messageCreate', async message => {
     return message.channel.send(`🏆 **TOP 3 (LIVE)**\n\n${topText}`);
   }
 
-  // 🚛 TRUCKBOOK + POWIADOMIENIA (NAPRAWIONE)
+  // 🚛 TRUCKBOOK + POWIADOMIENIA
   if (message.embeds.length === 0) return;
 
   const embed = message.embeds[0];
@@ -205,6 +210,22 @@ client.on('messageCreate', async message => {
   const km = parseInt(match[1].replace(/\s/g, ''));
   if (!km) return;
 
+  // 🔒 BLOKADA DUPLIKATU
+  const now = Date.now();
+
+  if (
+    km === lastKm &&
+    driver === lastDriver &&
+    now - lastTime < 5000
+  ) {
+    console.log("🚫 DUPLIKAT ZABLOKOWANY");
+    return;
+  }
+
+  lastKm = km;
+  lastDriver = driver;
+  lastTime = now;
+
   zrobioneKm += km;
   dzienneKm += km;
 
@@ -213,7 +234,6 @@ client.on('messageCreate', async message => {
 
   saveData();
 
-  // 🔔 POWIADOMIENIE (JAK WCZEŚNIEJ)
   message.channel.send(
     `✔ **${driver} +${km.toLocaleString()} km**\n\n` +
     `📅 Dziś: **${dzienneKm.toLocaleString()} km**\n` +
@@ -224,7 +244,6 @@ client.on('messageCreate', async message => {
 // ✅ START
 client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
-  console.log("🔁 BOOT CHECK");
 });
 
 client.login(TOKEN);
