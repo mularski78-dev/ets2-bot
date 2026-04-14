@@ -20,14 +20,12 @@ let lastKm = 0;
 let lastDriver = "";
 let lastTime = 0;
 
-// 🧠 FIX: kontrola dnia (KLUCZ DO DZIAŁANIA)
+// 🧠 DZIEŃ (FIX KLUCZOWY)
 let currentDay = "";
 
-// 🕒 Berlin time
-function getDETime() {
-  return new Date(new Date().toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin"
-  }));
+// 🕒 TIME (SAFE FORMAT)
+function getDay() {
+  return new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 }
 
 // 📥 LOAD
@@ -41,23 +39,25 @@ if (fs.existsSync(DATA_FILE)) {
 
     lastReset = data.lastReset && data.lastReset !== "Invalid Date"
       ? data.lastReset
-      : getDETime().toDateString();
+      : getDay();
 
   } catch (err) {
     console.log("❌ JSON ERROR:", err);
-    lastReset = getDETime().toDateString();
+    lastReset = getDay();
   }
 } else {
-  lastReset = getDETime().toDateString();
+  lastReset = getDay();
 }
 
-// 💾 SAVE (SAFE)
+// 💾 SAVE (SAFE 100%)
 function saveData() {
   try {
 
-    if (!lastReset || lastReset === "Invalid Date") {
-      lastReset = getDETime().toDateString();
-    }
+    const safeReset = (!lastReset || lastReset === "Invalid Date")
+      ? getDay()
+      : lastReset;
+
+    lastReset = safeReset;
 
     fs.writeFileSync(DATA_FILE, JSON.stringify({
       zrobioneKm,
@@ -82,12 +82,11 @@ const client = new Client({
 
 // 🔁 LOOP
 setInterval(async () => {
-  const now = getDETime();
-  const today = now.toDateString();
+  const today = getDay();
 
-  // 🧠 FIX: nowy dzień RESET
+  // 🔥 RESET DNIA (100% STABILNY)
   if (currentDay !== today) {
-    console.log("🔄 NOWY DZIEŃ RESET:", today);
+    console.log("🔄 NOWY DZIEŃ:", today);
 
     currentDay = today;
     dzienneKm = 0;
@@ -96,7 +95,8 @@ setInterval(async () => {
     saveData();
   }
 
-  // 🏁 TOP 3 23:58
+  // 🏁 TOP 3
+  const now = new Date();
   if (now.getHours() === 23 && now.getMinutes() === 58) {
     const sorted = Object.entries(drivers)
       .sort((a, b) => b[1] - a[1])
@@ -189,6 +189,7 @@ client.on('messageCreate', async message => {
     driver === lastDriver &&
     nowTime - lastTime < 5000
   ) {
+    console.log("🚫 DUPLIKAT ZABLOKOWANY");
     return;
   }
 
@@ -196,6 +197,7 @@ client.on('messageCreate', async message => {
   lastDriver = driver;
   lastTime = nowTime;
 
+  // 📊 LICZENIE
   zrobioneKm += km;
   dzienneKm += km;
 
