@@ -36,13 +36,19 @@ if (fs.existsSync(DATA_FILE)) {
     dzienneKm = data.dzienneKm ?? 0;
     drivers = data.drivers ?? {};
 
-    lastReset = data.lastReset && data.lastReset !== "Invalid Date"
-      ? data.lastReset
-      : getDETime().toDateString();
+    // 🔥 NAPRAWA LAST RESET (NIGDY JUŻ INVALID DATE)
+    if (!data.lastReset || data.lastReset === "Invalid Date") {
+      lastReset = getDETime().toDateString();
+    } else {
+      lastReset = data.lastReset;
+    }
 
   } catch (err) {
     console.log("❌ JSON ERROR:", err);
+    lastReset = getDETime().toDateString();
   }
+} else {
+  lastReset = getDETime().toDateString();
 }
 
 // 💾 SAVE
@@ -129,7 +135,7 @@ setInterval(async () => {
     }
   }
 
-  // 🔄 RESET DNIA
+  // 🔄 RESET DNIA (JUŻ DZIAŁA POPRAWNIE)
   if (lastReset !== today) {
     console.log("🔄 RESET DNIA:", today);
 
@@ -211,12 +217,12 @@ client.on('messageCreate', async message => {
   if (!km) return;
 
   // 🔒 BLOKADA DUPLIKATU
-  const now = Date.now();
+  const nowTime = Date.now();
 
   if (
     km === lastKm &&
     driver === lastDriver &&
-    now - lastTime < 5000
+    nowTime - lastTime < 5000
   ) {
     console.log("🚫 DUPLIKAT ZABLOKOWANY");
     return;
@@ -224,7 +230,7 @@ client.on('messageCreate', async message => {
 
   lastKm = km;
   lastDriver = driver;
-  lastTime = now;
+  lastTime = nowTime;
 
   zrobioneKm += km;
   dzienneKm += km;
