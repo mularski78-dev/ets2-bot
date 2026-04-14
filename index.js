@@ -15,20 +15,29 @@ let dzienneKm = 0;
 let drivers = {};
 let lastReset = null;
 
-// 🧠 dzień
-let currentDay = new Date().toISOString().split('T')[0];
+// 🧠 dzień (EU - TruckBook)
+let currentDay = getDay();
 
 // 🔒 anty duble
 let lastKm = 0;
 let lastDriver = "";
 let lastTime = 0;
 
-// 🔒 NOWE — blokada po ID wiadomości (FIX DUPLIKATÓW)
+// 🔒 blokada po ID wiadomości
 let lastMessageId = "";
 
-// 📅 dzień
+// 📅 dzień EU
 function getDay() {
-  return new Date().toISOString().split('T')[0];
+  return new Date(new Date().toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin"
+  })).toISOString().split('T')[0];
+}
+
+// 🕒 czas EU
+function getTime() {
+  return new Date(new Date().toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin"
+  }));
 }
 
 // 📥 LOAD
@@ -89,7 +98,7 @@ setInterval(async () => {
     saveData();
   }
 
-  const now = new Date();
+  const now = getTime();
 
   if (now.getHours() === 23 && now.getMinutes() === 58) {
     const sorted = Object.entries(drivers)
@@ -117,7 +126,7 @@ setInterval(async () => {
 // 📥 MESSAGE HANDLER
 client.on('messageCreate', async message => {
 
-  // 🔥 FIX KLUCZOWY: NIE BLOKUJ EMBEDÓW TRUCKBOOKA
+  // 🔥 NIE BLOKUJ EMBEDÓW TRUCKBOOKA
   if (message.author.bot && message.embeds.length === 0) return;
 
   if (message.channel.id !== CHANNEL_ID) return;
@@ -155,10 +164,10 @@ client.on('messageCreate', async message => {
     return message.channel.send(`🏆 **TOP 3 (LIVE)**\n\n${topText}`);
   }
 
-  // 🚛 TRUCKBOOK EMBED
+  // 🚛 EMBED
   if (!message.embeds || message.embeds.length === 0) return;
 
-  // 🔒 FIX DUPLIKATÓW (NAJWAŻNIEJSZE)
+  // 🔒 FIX DUPLIKATÓW
   if (message.id === lastMessageId) return;
   lastMessageId = message.id;
 
@@ -205,7 +214,6 @@ client.on('messageCreate', async message => {
 
   saveData();
 
-  // 💥 CEL + %
   const pozostalo = CEL_KM - zrobioneKm;
   const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
 
