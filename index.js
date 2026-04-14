@@ -195,10 +195,17 @@ client.on('messageCreate', async message => {
 
   saveData();
 
+  // 💥 DODANE: CEL + PROGRESS
+  const pozostalo = CEL_KM - zrobioneKm;
+  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+
   message.channel.send(
     `✔ **${driver} +${km.toLocaleString()} km**\n\n` +
     `📅 Dziś: **${dzienneKm.toLocaleString()} km**\n` +
-    `📊 Całość: ${zrobioneKm.toLocaleString()} km`
+    `📊 Całość: ${zrobioneKm.toLocaleString()} km\n` +
+    `🎯 Cel: ${CEL_KM.toLocaleString()} km\n` +
+    `⏳ Pozostało: ${pozostalo.toLocaleString()} km\n` +
+    `📈 Postęp: ${procent}%`
   );
 });
 
