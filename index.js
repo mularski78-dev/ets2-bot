@@ -20,6 +20,9 @@ let lastKm = 0;
 let lastDriver = "";
 let lastTime = 0;
 
+// 🧠 FIX: kontrola dnia (KLUCZ DO DZIAŁANIA)
+let currentDay = "";
+
 // 🕒 Berlin time
 function getDETime() {
   return new Date(new Date().toLocaleString("de-DE", {
@@ -27,7 +30,7 @@ function getDETime() {
   }));
 }
 
-// 📥 LOAD (HARD FIX INVALID DATE)
+// 📥 LOAD
 if (fs.existsSync(DATA_FILE)) {
   try {
     const data = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
@@ -36,11 +39,9 @@ if (fs.existsSync(DATA_FILE)) {
     dzienneKm = data.dzienneKm ?? 0;
     drivers = data.drivers ?? {};
 
-    if (!data.lastReset || data.lastReset === "Invalid Date") {
-      lastReset = getDETime().toDateString();
-    } else {
-      lastReset = data.lastReset;
-    }
+    lastReset = data.lastReset && data.lastReset !== "Invalid Date"
+      ? data.lastReset
+      : getDETime().toDateString();
 
   } catch (err) {
     console.log("❌ JSON ERROR:", err);
@@ -50,13 +51,12 @@ if (fs.existsSync(DATA_FILE)) {
   lastReset = getDETime().toDateString();
 }
 
-// 💾 SAVE (HARD PROTECTION)
+// 💾 SAVE (SAFE)
 function saveData() {
   try {
 
     if (!lastReset || lastReset === "Invalid Date") {
       lastReset = getDETime().toDateString();
-      console.log("⚠️ FIX: lastReset auto-corrected");
     }
 
     fs.writeFileSync(DATA_FILE, JSON.stringify({
@@ -80,43 +80,21 @@ const client = new Client({
   ]
 });
 
-// 📊 RAPORT
-function generateReportEmbed() {
-  const sorted = Object.entries(drivers).sort((a, b) => b[1] - a[1]);
-
-  const medals = ["🥇", "🥈", "🥉"];
-
-  const topText = sorted.length
-    ? sorted.slice(0, 3).map((d, i) =>
-        `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
-      ).join("\n")
-    : "Brak danych";
-
-  const allDrivers = sorted.length
-    ? sorted.map(d =>
-        `👤 ${d[0]} — ${d[1].toLocaleString()} km`
-      ).join("\n")
-    : "Brak danych";
-
-  const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
-
-  return new EmbedBuilder()
-    .setColor(0x00AEFF)
-    .setTitle("🌙 RAPORT DZIENNY")
-    .addFields(
-      { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
-      { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
-      { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
-      { name: "📈 Postęp", value: `${procent}%`, inline: true },
-      { name: "🏆 TOP 3", value: topText },
-      { name: "📋 WSZYSCY", value: allDrivers }
-    );
-}
-
 // 🔁 LOOP
 setInterval(async () => {
   const now = getDETime();
   const today = now.toDateString();
+
+  // 🧠 FIX: nowy dzień RESET
+  if (currentDay !== today) {
+    console.log("🔄 NOWY DZIEŃ RESET:", today);
+
+    currentDay = today;
+    dzienneKm = 0;
+    lastReset = today;
+
+    saveData();
+  }
 
   // 🏁 TOP 3 23:58
   if (now.getHours() === 23 && now.getMinutes() === 58) {
@@ -140,16 +118,6 @@ setInterval(async () => {
     }
   }
 
-  // 🔄 RESET DNIA
-  if (lastReset !== today) {
-    console.log("🔄 RESET DNIA:", today);
-
-    dzienneKm = 0;
-    lastReset = today;
-
-    saveData();
-  }
-
 }, 60 * 1000);
 
 // 📥 MESSAGE HANDLER
@@ -170,10 +138,6 @@ client.on('messageCreate', async message => {
 
     saveData();
     return message.channel.send(`✔ Dodano ${km} km`);
-  }
-
-  if (message.content === '!raport') {
-    return message.channel.send({ embeds: [generateReportEmbed()] });
   }
 
   if (message.content === '!top3') {
@@ -225,7 +189,6 @@ client.on('messageCreate', async message => {
     driver === lastDriver &&
     nowTime - lastTime < 5000
   ) {
-    console.log("🚫 DUPLIKAT ZABLOKOWANY");
     return;
   }
 
