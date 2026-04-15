@@ -6,23 +6,29 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
 const CEL_KM = 5000000;
 
-// 📁 plik danych
+// 📁 dane
 const DATA_FILE = '/var/data/data.json';
 
-// 📊 dane
+// 📊 stan
 let zrobioneKm = 0;
 let dzienneKm = 0;
 let drivers = {};
 let lastReset = null;
+let currentDay = null;
 
 // 🔒 anty duble
 let lastKm = 0;
 let lastDriver = "";
 let lastTime = 0;
 
-// 📅 dzień
+// 🔒 raporty
+let dailyReportSent = false;
+let top3Sent = false;
+
+// 📅 EU SAFE DAY
 function getDay() {
-  return new Date().toISOString().split('T')[0];
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
 }
 
 // 📥 LOAD
@@ -34,16 +40,17 @@ if (fs.existsSync(DATA_FILE)) {
     dzienneKm = data.dzienneKm ?? 0;
     drivers = data.drivers ?? {};
 
-    lastReset = data.lastReset && data.lastReset !== "Invalid Date"
-      ? data.lastReset
-      : getDay();
+    lastReset = data.lastReset ?? getDay();
+    currentDay = lastReset;
 
   } catch (err) {
     console.log("❌ JSON ERROR:", err);
     lastReset = getDay();
+    currentDay = lastReset;
   }
 } else {
   lastReset = getDay();
+  currentDay = lastReset;
 }
 
 // 💾 SAVE
@@ -65,34 +72,95 @@ const client = new Client({
   ]
 });
 
-// 🔁 RESET + TOP3 AUTO
+// 🔁 LOOP
 setInterval(async () => {
-  const today = getDay();
 
-  if (today !== lastReset) {
-    console.log("🔄 NOWY DZIEŃ:", today);
+  const today = getDay();
+  const now = new Date();
+
+  // 🔄 RESET DNIA
+  if (today !== currentDay) {
+    console.log("🔄 NOWY DZIEŃ RESET");
+
+    currentDay = today;
     lastReset = today;
     dzienneKm = 0;
+
+    dailyReportSent = false;
+    top3Sent = false;
+
     saveData();
   }
 
-  const now = new Date();
+  // 🏁 TOP3 23:58 EU
+  if (now.getUTCHours() === 23 && now.getUTCMinutes() === 58) {
 
-  if (now.getHours() === 23 && now.getMinutes() === 58) {
-    const sorted = Object.entries(drivers)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3);
+    if (!top3Sent) {
+      const sorted = Object.entries(drivers)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
 
-    const medals = ["🥇", "🥈", "🥉"];
+      const medals = ["🥇", "🥈", "🥉"];
 
-    const topText = sorted.length
-      ? sorted.map((d, i) =>
-          `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
-        ).join("\n")
-      : "Brak danych";
+      const topText = sorted.length
+        ? sorted.map((d, i) =>
+            `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+          ).join("\n")
+        : "Brak danych";
 
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    channel.send(`🏁 **TOP 3 DNIA**\n\n${topText}`).catch(console.log);
+      try {
+        const channel = await client.channels.fetch(CHANNEL_ID);
+        await channel.send(`🏁 **TOP 3 DNIA**\n\n${topText}`);
+      } catch (err) {
+        console.log("❌ TOP3 ERROR:", err);
+      }
+
+      top3Sent = true;
+    }
+  }
+
+  // 📊 RAPORT 23:59 EU
+  if (now.getUTCHours() === 23 && now.getUTCMinutes() === 59) {
+
+    if (!dailyReportSent) {
+
+      const sorted = Object.entries(drivers)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+
+      const medals = ["🥇", "🥈", "🥉"];
+
+      const topText = sorted.length
+        ? sorted.map((d, i) =>
+            `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
+          ).join("\n")
+        : "Brak danych";
+
+      const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
+      const pozostalo = CEL_KM - zrobioneKm;
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00AEFF)
+        .setTitle("🏁 RAPORT DZIENNY FIRMY")
+        .addFields(
+          { name: "📅 Dzień", value: currentDay, inline: true },
+          { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
+          { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
+          { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
+          { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
+          { name: "📈 Postęp", value: `${procent}%`, inline: true },
+          { name: "🏆 TOP 3", value: topText }
+        );
+
+      try {
+        const channel = await client.channels.fetch(CHANNEL_ID);
+        await channel.send({ embeds: [embed] });
+      } catch (err) {
+        console.log("❌ RAPORT ERROR:", err);
+      }
+
+      dailyReportSent = true;
+    }
   }
 
 }, 60000);
@@ -100,7 +168,7 @@ setInterval(async () => {
 // 📥 MESSAGE HANDLER
 client.on('messageCreate', async message => {
 
-  if (!message.channel || message.channel.id !== CHANNEL_ID) return;
+  if (message.channel.id !== CHANNEL_ID) return;
 
   // 🏆 TOP3
   if (message.content === '!top3') {
@@ -119,33 +187,21 @@ client.on('messageCreate', async message => {
     return message.channel.send(`🏆 **TOP 3**\n\n${text}`);
   }
 
-  // 📊 RAPORT (EMBED)
+  // 📊 RAPORT
   if (message.content === '!raport') {
-
-    const sorted = Object.entries(drivers).sort((a, b) => b[1] - a[1]);
-
-    const top3 = sorted.slice(0, 3)
-      .map((d, i) => `🥇🥈🥉`[i] + ` ${d[0]} — ${d[1].toLocaleString()} km`)
-      .join("\n") || "Brak danych";
-
-    const all = sorted
-      .map(d => `👤 ${d[0]} — ${d[1].toLocaleString()} km`)
-      .join("\n") || "Brak danych";
 
     const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
     const pozostalo = CEL_KM - zrobioneKm;
 
     const embed = new EmbedBuilder()
       .setColor(0x00AEFF)
-      .setTitle("📊 RAPORT FIRMY")
+      .setTitle("📊 RAPORT")
       .addFields(
         { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
         { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
         { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
         { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
-        { name: "📈 Postęp", value: `${procent}%`, inline: true },
-        { name: "🏆 TOP 3", value: top3 },
-        { name: "📋 Kierowcy", value: all }
+        { name: "📈 Postęp", value: `${procent}%`, inline: true }
       );
 
     return message.channel.send({ embeds: [embed] });
@@ -175,6 +231,18 @@ client.on('messageCreate', async message => {
 
   const km = parseInt(match[1].replace(/\s/g, ''));
   if (!km) return;
+
+  const nowTime = Date.now();
+
+  if (
+    km === lastKm &&
+    driver === lastDriver &&
+    nowTime - lastTime < 5000
+  ) return;
+
+  lastKm = km;
+  lastDriver = driver;
+  lastTime = nowTime;
 
   zrobioneKm += km;
   dzienneKm += km;
