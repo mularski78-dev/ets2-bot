@@ -6,29 +6,44 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = '1064716405972418630';
 const CEL_KM = 5000000;
 
-// 📁 dane
+// 📁 plik danych
 const DATA_FILE = '/var/data/data.json';
 
-// 📊 stan
+// 📊 dane
 let zrobioneKm = 0;
 let dzienneKm = 0;
 let drivers = {};
 let lastReset = null;
-let currentDay = null;
 
 // 🔒 anty duble
 let lastKm = 0;
 let lastDriver = "";
 let lastTime = 0;
+let lastMessageId = "";
 
-// 🔒 raporty
-let dailyReportSent = false;
-let top3Sent = false;
-
-// 📅 EU SAFE DAY
+// 📅 CZAS EU (PEWNY)
 function getDay() {
+  return new Date().toLocaleDateString('en-CA', {
+    timeZone: 'Europe/Warsaw'
+  });
+}
+
+// 🕒 CZAS EU GODZINA/MINUTA
+function getTimeEU() {
   const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
+
+  const hour = parseInt(new Intl.DateTimeFormat('pl-PL', {
+    timeZone: 'Europe/Warsaw',
+    hour: '2-digit',
+    hour12: false
+  }).format(now));
+
+  const minute = parseInt(new Intl.DateTimeFormat('pl-PL', {
+    timeZone: 'Europe/Warsaw',
+    minute: '2-digit'
+  }).format(now));
+
+  return { hour, minute };
 }
 
 // 📥 LOAD
@@ -39,18 +54,14 @@ if (fs.existsSync(DATA_FILE)) {
     zrobioneKm = data.zrobioneKm ?? 0;
     dzienneKm = data.dzienneKm ?? 0;
     drivers = data.drivers ?? {};
-
-    lastReset = data.lastReset ?? getDay();
-    currentDay = lastReset;
+    lastReset = typeof data.lastReset === "string" ? data.lastReset : getDay();
 
   } catch (err) {
     console.log("❌ JSON ERROR:", err);
     lastReset = getDay();
-    currentDay = lastReset;
   }
 } else {
   lastReset = getDay();
-  currentDay = lastReset;
 }
 
 // 💾 SAVE
@@ -72,94 +83,75 @@ const client = new Client({
   ]
 });
 
-// 🔁 LOOP
+// 🔁 LOOP (RESET + TOP3 + RAPORT)
 setInterval(async () => {
 
   const today = getDay();
-  const now = new Date();
+  const { hour, minute } = getTimeEU();
 
   // 🔄 RESET DNIA
-  if (today !== currentDay) {
-    console.log("🔄 NOWY DZIEŃ RESET");
-
-    currentDay = today;
+  if (today !== lastReset) {
+    console.log("🔄 NOWY DZIEŃ:", today);
     lastReset = today;
     dzienneKm = 0;
-
-    dailyReportSent = false;
-    top3Sent = false;
-
+    drivers = {}; // 🔥 reset kierowców dziennych
     saveData();
   }
 
-  // 🏁 TOP3 23:58 EU
-  if (now.getUTCHours() === 23 && now.getUTCMinutes() === 58) {
-
-    if (!top3Sent) {
+  // 🏁 TOP3
+  if (hour === 23 && minute === 58) {
+    try {
       const sorted = Object.entries(drivers)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 3);
 
       const medals = ["🥇", "🥈", "🥉"];
 
-      const topText = sorted.length
+      const text = sorted.length
         ? sorted.map((d, i) =>
             `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
           ).join("\n")
         : "Brak danych";
 
-      try {
-        const channel = await client.channels.fetch(CHANNEL_ID);
-        await channel.send(`🏁 **TOP 3 DNIA**\n\n${topText}`);
-      } catch (err) {
-        console.log("❌ TOP3 ERROR:", err);
-      }
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      await channel.send(`🏁 **TOP 3 DNIA**\n\n${text}`);
 
-      top3Sent = true;
+    } catch (err) {
+      console.log("❌ TOP3 ERROR:", err);
     }
   }
 
-  // 📊 RAPORT 23:59 EU
-  if (now.getUTCHours() === 23 && now.getUTCMinutes() === 59) {
-
-    if (!dailyReportSent) {
-
+  // 📊 RAPORT
+  if (hour === 23 && minute === 59) {
+    try {
       const sorted = Object.entries(drivers)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
+        .sort((a, b) => b[1] - a[1]);
 
-      const medals = ["🥇", "🥈", "🥉"];
-
-      const topText = sorted.length
-        ? sorted.map((d, i) =>
-            `${medals[i]} ${d[0]} — ${d[1].toLocaleString()} km`
-          ).join("\n")
-        : "Brak danych";
+      const top3 = sorted.slice(0, 3)
+        .map((d, i) => ["🥇","🥈","🥉"][i] + ` ${d[0]} — ${d[1].toLocaleString()} km`)
+        .join("\n") || "Brak danych";
 
       const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
       const pozostalo = CEL_KM - zrobioneKm;
 
       const embed = new EmbedBuilder()
         .setColor(0x00AEFF)
-        .setTitle("🏁 RAPORT DZIENNY FIRMY")
+        .setTitle("📊 RAPORT DZIENNY FIRMY")
         .addFields(
-          { name: "📅 Dzień", value: currentDay, inline: true },
+          { name: "📅 Dzień", value: today },
           { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
           { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
           { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
           { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
           { name: "📈 Postęp", value: `${procent}%`, inline: true },
-          { name: "🏆 TOP 3", value: topText }
+          { name: "🏆 TOP 3", value: top3 }
         );
 
-      try {
-        const channel = await client.channels.fetch(CHANNEL_ID);
-        await channel.send({ embeds: [embed] });
-      } catch (err) {
-        console.log("❌ RAPORT ERROR:", err);
-      }
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      await channel.send({ embeds: [embed] });
 
-      dailyReportSent = true;
+    } catch (err) {
+      console.log("❌ RAPORT ERROR:", err);
     }
   }
 
@@ -168,9 +160,17 @@ setInterval(async () => {
 // 📥 MESSAGE HANDLER
 client.on('messageCreate', async message => {
 
-  if (message.channel.id !== CHANNEL_ID) return;
+  if (!message.channel || message.channel.id !== CHANNEL_ID) return;
 
-  // 🏆 TOP3
+  const { hour, minute } = getTimeEU();
+
+  // ❌ NIE LICZ PO 23:59
+  if (hour === 23 && minute >= 59) return;
+
+  // 🔥 ignoruj śmieci botów bez embedów
+  if (message.author.bot && (!message.embeds || message.embeds.length === 0)) return;
+
+  // 🏆 TOP3 KOMENDA
   if (message.content === '!top3') {
     const sorted = Object.entries(drivers)
       .sort((a, b) => b[1] - a[1])
@@ -184,24 +184,32 @@ client.on('messageCreate', async message => {
         ).join("\n")
       : "Brak danych";
 
-    return message.channel.send(`🏆 **TOP 3**\n\n${text}`);
+    return message.channel.send(`🏆 **TOP 3 (LIVE)**\n\n${text}`);
   }
 
-  // 📊 RAPORT
+  // 📊 RAPORT KOMENDA
   if (message.content === '!raport') {
+
+    const sorted = Object.entries(drivers)
+      .sort((a, b) => b[1] - a[1]);
+
+    const top3 = sorted.slice(0, 3)
+      .map((d, i) => ["🥇","🥈","🥉"][i] + ` ${d[0]} — ${d[1].toLocaleString()} km`)
+      .join("\n") || "Brak danych";
 
     const procent = ((zrobioneKm / CEL_KM) * 100).toFixed(2);
     const pozostalo = CEL_KM - zrobioneKm;
 
     const embed = new EmbedBuilder()
       .setColor(0x00AEFF)
-      .setTitle("📊 RAPORT")
+      .setTitle("📊 RAPORT FIRMY")
       .addFields(
         { name: "📅 Dziś", value: `${dzienneKm.toLocaleString()} km`, inline: true },
         { name: "📊 Całość", value: `${zrobioneKm.toLocaleString()} km`, inline: true },
         { name: "🎯 Cel", value: `${CEL_KM.toLocaleString()} km`, inline: true },
         { name: "⏳ Pozostało", value: `${pozostalo.toLocaleString()} km`, inline: true },
-        { name: "📈 Postęp", value: `${procent}%`, inline: true }
+        { name: "📈 Postęp", value: `${procent}%`, inline: true },
+        { name: "🏆 TOP 3", value: top3 }
       );
 
     return message.channel.send({ embeds: [embed] });
@@ -210,16 +218,23 @@ client.on('messageCreate', async message => {
   // 🚛 TRUCKBOOK EMBED
   if (!message.embeds || message.embeds.length === 0) return;
 
+  // 🔒 FIX DUPLIKATÓW
+  if (message.id === lastMessageId) return;
+  lastMessageId = message.id;
+
   const embed = message.embeds[0];
 
   let driver =
     embed.author?.name ||
-    embed.footer?.text ||
-    "Unknown";
+    embed.footer?.text;
+
+  // ❌ brak kierowcy = ignoruj
+  if (!driver) return;
 
   let text = "";
   if (embed.title) text += embed.title + " ";
   if (embed.description) text += embed.description + " ";
+
   if (embed.fields) {
     embed.fields.forEach(f => {
       text += f.name + " " + f.value + " ";
@@ -253,12 +268,13 @@ client.on('messageCreate', async message => {
   saveData();
 
   message.channel.send(
-    `✔ **${driver} +${km.toLocaleString()} km**\n` +
+    `✔ **${driver} +${km.toLocaleString()} km**\n\n` +
     `📅 Dziś: **${dzienneKm.toLocaleString()} km**\n` +
     `📊 Całość: ${zrobioneKm.toLocaleString()} km`
   );
 });
 
+// ✅ START
 client.once('ready', () => {
   console.log(`Bot działa jako ${client.user.tag}`);
 });
